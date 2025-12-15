@@ -291,12 +291,12 @@ prepare() {
     done
 
     echo "Setting config..."
-    cp ../config .config
+    cp "${srcdir}/config" .config
 
     # Apply ghost.fragment config overrides
-    if [[ -f ../ghost.fragment ]]; then
+    if [[ -f "${srcdir}/ghost.fragment" ]]; then
         echo "Applying ghost.fragment config..."
-        scripts/kconfig/merge_config.sh -m .config ../ghost.fragment
+        scripts/kconfig/merge_config.sh -m .config "${srcdir}/ghost.fragment"
     fi
 
     ### ============================================================
