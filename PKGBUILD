@@ -192,34 +192,41 @@ source=(
     # CachyOS base patches (amd-pstate, bbr3, sched-ext, block opts, etc.)
     "${_patchsource}/all/0001-cachyos-base-all.patch"
 )
+sha256sums=('SKIP' 'SKIP' 'SKIP' 'SKIP')
 
 # BORE scheduler patch
 if [[ "$_cpusched" == "bore" ]]; then
     source+=("${_patchsource}/sched/0001-bore-cachy.patch")
+    sha256sums+=('SKIP')
 fi
 
 # Zenify gaming patches (from linux-tkg)
 if [[ "$_zenify" == "yes" ]]; then
     source+=("${_tkgpatch}/0003-glitched-base.patch")
+    sha256sums+=('SKIP')
     # EEVDF-specific zenify tuning
     if [[ -n "$(curl -sI "${_tkgpatch}/0003-glitched-eevdf-additions.patch" 2>/dev/null | grep '200 OK')" ]]; then
         source+=("${_tkgpatch}/0003-glitched-eevdf-additions.patch")
+        sha256sums+=('SKIP')
     fi
 fi
 
 # Clear Linux patches (Intel optimizations)
 if [[ "$_clear_patches" == "yes" ]]; then
     source+=("${_tkgpatch}/0002-clear-patches.patch")
+    sha256sums+=('SKIP')
 fi
 
 # OpenRGB i2c support
 if [[ "$_openrgb" == "yes" ]]; then
     source+=("${_tkgpatch}/0014-OpenRGB.patch")
+    sha256sums+=('SKIP')
 fi
 
 # ACS Override for VFIO
 if [[ "$_acs_override" == "yes" ]]; then
     source+=("${_tkgpatch}/0006-add-acs-overrides_iommu.patch")
+    sha256sums+=('SKIP')
 fi
 
 # NVIDIA open modules (RTX 5090 Blackwell support)
@@ -237,6 +244,7 @@ if [[ "$_nvidia_bundle" == "yes" ]]; then
         # Exclusive: NULL pointer deref fix (PR #978)
         "nv-uvm-null-deref.patch::nvidia/0002-uvm-null-ptr-deref-fix.patch"
     )
+    sha256sums+=('SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP')
 fi
 
 # Build flags based on compiler choice
@@ -249,6 +257,7 @@ if [[ "$_compiler" == "llvm" ]]; then
     )
     # Add DKMS clang patch for LLVM builds
     source+=("${_patchsource}/misc/dkms-clang.patch")
+    sha256sums+=('SKIP')
 else
     BUILD_FLAGS=()
 fi
@@ -744,9 +753,3 @@ for _p in "${pkgname[@]}"; do
     }"
 done
 
-# Checksums - run updpkgsums to generate
-sha256sums=('SKIP'
-            'SKIP'
-            'SKIP'
-            'SKIP'
-            'SKIP')
