@@ -43,10 +43,10 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Download sources
-        run: makepkg -od --noconfirm
+        run: makepkg -od --noconfirm --skipinteg
 
       - name: Build kernel (config only)
-        run: makepkg -o --noconfirm
+        run: makepkg -o --noconfirm --skipinteg
         env:
           _localmodcfg: "no"
           _nvidia_bundle: "no"
