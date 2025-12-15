@@ -20,26 +20,16 @@ on:
 jobs:
   validate:
     name: Validate PKGBUILD
-    runs-on: ubuntu-latest
-    container:
-      image: archlinux:latest
+    runs-on: self-hosted
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Arch Linux
-        run: |
-          pacman -Syu --noconfirm
-          pacman -S --noconfirm base-devel namcap
-
       - name: Validate PKGBUILD syntax
-        run: |
-          namcap PKGBUILD || true
+        run: namcap PKGBUILD || true
 
       - name: Check PKGBUILD sources
-        shell: bash
         run: |
-          ls -la
           source ./PKGBUILD
           echo "Kernel version: ${pkgver}"
           echo "Package base: ${pkgbase}"
@@ -47,52 +37,32 @@ jobs:
   build:
     name: Build Kernel
     needs: validate
-    runs-on: ubuntu-latest
-    container:
-      image: archlinux:latest
+    runs-on: self-hosted
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup build environment
-        run: |
-          pacman -Syu --noconfirm
-          pacman -S --noconfirm \
-            base-devel bc cpio gettext libelf pahole perl python \
-            tar xz zstd clang llvm lld rust rust-bindgen rust-src \
-            git wget
-
-      - name: Create build user
-        run: |
-          useradd -m builder
-          chown -R builder:builder .
-          echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
-
       - name: Download sources
-        run: |
-          su builder -c "makepkg -od --noconfirm"
+        run: makepkg -od --noconfirm
 
       - name: Build kernel (config only)
-        run: |
-          # Only validate config generation, full build is too long for CI
-          su builder -c "makepkg -o --noconfirm"
+        run: makepkg -o --noconfirm
         env:
           _localmodcfg: "no"
-          _build_nvidia_open: "no"
+          _nvidia_bundle: "no"
 
       - name: Upload config artifact
         uses: actions/upload-artifact@v4
         with:
           name: kernel-config
-          path: |
-            src/linux-*/.config
+          path: src/linux-*/.config
           if-no-files-found: ignore
 
   release:
     name: Create Release
     needs: build
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -100,14 +70,8 @@ jobs:
       - name: Get version
         id: version
         run: |
-          # Debug: show files
-          ls -la
-          # Extract version from PKGBUILD without sourcing (avoids bash/arch dependencies)
-          _major=$(grep '^_major=' PKGBUILD | cut -d= -f2)
-          _minor=$(grep '^_minor=' PKGBUILD | cut -d= -f2)
-          pkgrel=$(grep '^pkgrel=' PKGBUILD | cut -d= -f2)
-          echo "version=${_major}.${_minor}-${pkgrel}" >> $GITHUB_OUTPUT
-          echo "Detected version: ${_major}.${_minor}-${pkgrel}"
+          source PKGBUILD
+          echo "version=${pkgver}-${pkgrel}" >> $GITHUB_OUTPUT
 
       - name: Create Release
         uses: softprops/action-gh-release@v1

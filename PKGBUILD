@@ -187,8 +187,8 @@ _nv_open_pkg="NVIDIA-kernel-module-source-${_nv_ver}"
 
 source=(
     "${_kernel_src}"
-    "config::config/config"
-    "ghost.fragment::config/ghost.fragment"
+    "config::https://raw.githubusercontent.com/GhostKellz/linux-ghost/refs/heads/main/config/config"
+    "ghost.fragment::https://raw.githubusercontent.com/GhostKellz/linux-ghost/refs/heads/main/config/ghost.fragment"
     # CachyOS base patches (amd-pstate, bbr3, sched-ext, block opts, etc.)
     "${_patchsource}/all/0001-cachyos-base-all.patch"
 )
