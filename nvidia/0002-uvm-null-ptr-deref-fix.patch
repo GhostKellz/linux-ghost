@@ -1,0 +1,31 @@
+From 1190cb709a0a597e14d22cea3c423120c52360a3 Mon Sep 17 00:00:00 2001
+From: Serapheim Dimitropoulos <sdimitropoulos@coreweave.com>
+Date: Mon, 1 Dec 2025 08:38:27 -0500
+Subject: [PATCH] NULL pointer deref of partially uninitialized
+ `uvm_parent_gpu_t` in error path
+
+NVIDIA ID: 5610224
+CoreWeave ID: 789
+---
+ kernel-open/nvidia-uvm/uvm_pmm_gpu.c | 5 +++--
+ 1 file changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/kernel-open/nvidia-uvm/uvm_pmm_gpu.c b/kernel-open/nvidia-uvm/uvm_pmm_gpu.c
+index cba0ec539..0592fb808 100644
+--- a/kernel-open/nvidia-uvm/uvm_pmm_gpu.c
++++ b/kernel-open/nvidia-uvm/uvm_pmm_gpu.c
+@@ -3477,11 +3477,12 @@ void uvm_pmm_gpu_device_p2p_init(uvm_parent_gpu_t *parent_gpu)
+ 
+ void uvm_pmm_gpu_device_p2p_deinit(uvm_parent_gpu_t *parent_gpu)
+ {
+-    unsigned long pci_start_pfn = pci_resource_start(parent_gpu->pci_dev,
+-                                                     uvm_device_p2p_static_bar(parent_gpu)) >> PAGE_SHIFT;
++    unsigned long pci_start_pfn;
+     struct page *p2p_page;
+ 
+     if (parent_gpu->device_p2p_initialised && !uvm_parent_gpu_is_coherent(parent_gpu)) {
++        pci_start_pfn = pci_resource_start(parent_gpu->pci_dev,
++                                           uvm_device_p2p_static_bar(parent_gpu)) >> PAGE_SHIFT;
+         p2p_page = pfn_to_page(pci_start_pfn);
+         devm_memunmap_pages(&parent_gpu->pci_dev->dev, page_pgmap(p2p_page));
+     }

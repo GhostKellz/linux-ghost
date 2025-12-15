@@ -1,0 +1,15 @@
+[Unit]
+Description=Linux Ghost V-Cache Mode Manager
+Documentation=https://github.com/ghostkellz/linux-ghost
+After=multi-user.target
+ConditionPathExists=/sys/bus/platform/drivers/amd_x3d_vcache
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# Default to cache mode (gaming) on boot
+ExecStart=/usr/bin/ghost-vcache cache
+ExecStop=/usr/bin/ghost-vcache frequency
+
+[Install]
+WantedBy=multi-user.target

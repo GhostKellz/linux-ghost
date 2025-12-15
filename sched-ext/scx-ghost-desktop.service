@@ -1,0 +1,19 @@
+[Unit]
+Description=Linux Ghost Desktop Scheduler (scx_bpfland)
+Documentation=https://github.com/sched-ext/scx
+After=multi-user.target
+Conflicts=scx.service scx-ghost-gaming.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/scx_bpfland
+# Restart on failure
+Restart=on-failure
+RestartSec=5
+# Don't kill child processes on stop
+KillMode=process
+# Run as root (required for sched-ext)
+User=root
+
+[Install]
+WantedBy=multi-user.target

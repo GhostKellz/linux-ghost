@@ -1,0 +1,306 @@
+# =========================
+# Linux Ghost Config Fragment
+# =========================
+# Based on ghostkellz.myfrag from linux-tkg
+# Apply with: scripts/kconfig/merge_config.sh -m .config ghost.fragment
+
+# =========================
+# Scheduler & Performance
+# =========================
+
+# sched-ext support (for scx_lavd, scx_bpfland, etc.)
+CONFIG_SCHED_CLASS_EXT=y
+
+# BPF JIT for sched-ext and performance
+CONFIG_BPF_JIT=y
+CONFIG_BPF_JIT_ALWAYS_ON=y
+
+# High resolution timers
+CONFIG_HIGH_RES_TIMERS=y
+
+# =========================
+# AMD Zen5/X3D Optimizations
+# =========================
+
+CONFIG_X86_AMD_PLATFORM_DEVICE=y
+CONFIG_AMD_NB=y
+CONFIG_AMD_IOMMU=y
+CONFIG_AMD_IOMMU_V2=m
+
+# AMD P-State driver (preferred for Zen4/5)
+CONFIG_X86_AMD_PSTATE=y
+CONFIG_X86_AMD_PSTATE_DEFAULT_MODE=3
+
+# AMD P-State EPP (Energy Performance Preference)
+CONFIG_X86_AMD_PSTATE_UT=m
+
+# AMD 3D V-Cache Optimizer (9950X3D, 7950X3D, 7900X3D)
+# Allows runtime switching between cache/frequency CCD preference
+# Control via: /sys/bus/platform/drivers/amd_x3d_vcache/
+CONFIG_AMD_3D_VCACHE=y
+
+# AMD Preferred Core ranking
+CONFIG_AMD_PSTATE_PREFCORE=y
+
+# NUMA support (critical for X3D chiplet design)
+CONFIG_NUMA=y
+CONFIG_NUMA_BALANCING=y
+CONFIG_NUMA_BALANCING_DEFAULT_ENABLED=y
+
+# For high core count systems (up to 32 cores / 64 threads)
+CONFIG_NR_CPUS=64
+
+# =========================
+# Memory Management
+# =========================
+
+# Transparent Hugepages (better for gaming/large workloads)
+CONFIG_TRANSPARENT_HUGEPAGE=y
+CONFIG_TRANSPARENT_HUGEPAGE_ALWAYS=y
+
+# Memory compaction
+CONFIG_COMPACTION=y
+CONFIG_MIGRATION=y
+
+# Zstd compression
+CONFIG_KERNEL_ZSTD=y
+CONFIG_ZSTD_COMPRESS=y
+CONFIG_ZSTD_DECOMPRESS=y
+
+# =========================
+# NVIDIA Support (RTX 5090 Blackwell ready)
+# =========================
+
+CONFIG_DRM=y
+CONFIG_DRM_NOUVEAU=m
+CONFIG_FB=y
+CONFIG_FRAMEBUFFER_CONSOLE=y
+# fbdev required for Linux 6.11+ with NVIDIA drivers
+CONFIG_DRM_FBDEV_EMULATION=y
+CONFIG_SYSFB_SIMPLEFB=y
+
+# =========================
+# AMD GPU (fallback/hybrid systems)
+# =========================
+
+CONFIG_DRM_AMDGPU=m
+CONFIG_DRM_AMDGPU_SI=y
+CONFIG_DRM_AMDGPU_CIK=y
+CONFIG_DRM_AMDGPU_USERPTR=y
+
+# =========================
+# Storage (NVMe optimizations)
+# =========================
+
+CONFIG_BLK_DEV_NVME=y
+CONFIG_NVME_CORE=y
+CONFIG_NVME_MULTIPATH=y
+
+# =========================
+# USB (high-speed devices)
+# =========================
+
+CONFIG_USB_XHCI_HCD=y
+CONFIG_USB_EHCI_HCD=y
+
+# =========================
+# Webcam & Media (Elgato support)
+# =========================
+
+CONFIG_MEDIA_SUPPORT=y
+CONFIG_MEDIA_USB_SUPPORT=y
+CONFIG_MEDIA_CAMERA_SUPPORT=y
+CONFIG_MEDIA_CONTROLLER=y
+CONFIG_VIDEO_DEV=m
+CONFIG_USB_VIDEO_CLASS=m
+CONFIG_V4L2_MEM2MEM_DEV=m
+CONFIG_VIDEOBUF2_CORE=m
+CONFIG_VIDEOBUF2_V4L2=m
+CONFIG_INPUT_EVDEV=m
+CONFIG_SND_USB_AUDIO=m
+
+# =========================
+# Network Filesystems (CIFS/SMB)
+# =========================
+
+CONFIG_CIFS=m
+CONFIG_CIFS_XATTR=y
+CONFIG_CIFS_DFS_UPCALL=y
+CONFIG_CIFS_FSCACHE=y
+
+# =========================
+# FUSE (userspace filesystems)
+# =========================
+
+CONFIG_FUSE_FS=m
+CONFIG_FUSE_DAX=y
+
+# =========================
+# Containers (Docker/Podman)
+# =========================
+
+# Namespaces
+CONFIG_NAMESPACES=y
+CONFIG_UTS_NS=y
+CONFIG_PID_NS=y
+CONFIG_NET_NS=y
+CONFIG_USER_NS=y
+
+# Cgroups
+CONFIG_CGROUPS=y
+CONFIG_CGROUP_SCHED=y
+CONFIG_CGROUP_PIDS=y
+CONFIG_CGROUP_FREEZER=y
+CONFIG_CGROUP_DEVICE=y
+CONFIG_CGROUP_CPUACCT=y
+CONFIG_CGROUP_PERF=y
+CONFIG_CGROUP_BPF=y
+CONFIG_MEMCG=y
+CONFIG_BLK_CGROUP=y
+CONFIG_NET_CLS_CGROUP=m
+
+# OverlayFS
+CONFIG_OVERLAY_FS=m
+
+# Security
+CONFIG_SECCOMP=y
+CONFIG_SECCOMP_FILTER=y
+CONFIG_SECURITY_APPARMOR=y
+
+# =========================
+# Container/VPN Networking
+# =========================
+
+CONFIG_TUN=m
+CONFIG_VETH=m
+CONFIG_BRIDGE=m
+CONFIG_BRIDGE_NETFILTER=m
+CONFIG_MACVLAN=m
+CONFIG_IPVLAN=m
+CONFIG_VXLAN=m
+CONFIG_GENEVE=m
+CONFIG_WIREGUARD=m
+
+# Netfilter/nftables
+CONFIG_NETFILTER=y
+CONFIG_NETFILTER_ADVANCED=y
+CONFIG_NF_CONNTRACK=y
+CONFIG_NF_TABLES=y
+CONFIG_NF_TABLES_INET=y
+CONFIG_NF_TABLES_IPV4=y
+CONFIG_NF_TABLES_IPV6=y
+CONFIG_NF_NAT=y
+CONFIG_NFT_NAT=m
+CONFIG_NFT_CHAIN_NAT=m
+CONFIG_NFT_CT=m
+CONFIG_NFT_MASQ=m
+CONFIG_NFT_REDIR=m
+CONFIG_NFT_COMPAT=m
+
+# iptables compat
+CONFIG_IP_NF_IPTABLES=m
+CONFIG_IP_NF_FILTER=m
+CONFIG_IP_NF_NAT=m
+CONFIG_IP_NF_TARGET_MASQUERADE=m
+CONFIG_IP6_NF_IPTABLES=m
+CONFIG_IP6_NF_FILTER=m
+CONFIG_IP6_NF_TARGET_MASQUERADE=m
+
+# =========================
+# IPv6 (Battle.net/WoW needs this)
+# =========================
+
+CONFIG_IPV6=y
+
+# =========================
+# Tailscale/WireGuard
+# =========================
+
+CONFIG_NET_UDP_TUNNEL=m
+CONFIG_IP_ADVANCED_ROUTER=y
+CONFIG_IP_MULTIPLE_TABLES=y
+CONFIG_IP_ROUTE_MULTIPATH=y
+CONFIG_IPV6_MULTIPLE_TABLES=y
+
+# =========================
+# Virtualization (KVM/QEMU)
+# =========================
+
+CONFIG_KVM=y
+CONFIG_KVM_AMD=m
+CONFIG_KVM_INTEL=m
+CONFIG_VIRTIO=y
+CONFIG_VIRTIO_PCI=m
+CONFIG_VIRTIO_NET=y
+CONFIG_VIRTIO_BLK=m
+CONFIG_VIRTIO_CONSOLE=m
+CONFIG_VIRTIO_BALLOON=m
+CONFIG_VIRTIO_GPU=m
+CONFIG_VIRTIO_INPUT=m
+CONFIG_VIRTIO_VSOCKETS=m
+CONFIG_VIRTIO_FS=m
+
+# VFIO (GPU passthrough)
+CONFIG_VFIO=y
+CONFIG_VFIO_PCI=y
+CONFIG_VFIO_MDEV=m
+
+# vhost
+CONFIG_VHOST=y
+CONFIG_VHOST_NET=y
+CONFIG_VHOST_VSOCK=y
+CONFIG_VHOST_VDPA=y
+
+# =========================
+# Crypto (Wine/Proton TLS)
+# =========================
+
+CONFIG_TLS=y
+CONFIG_CRYPTO_AES_X86_64=m
+CONFIG_CRYPTO_AES_NI_INTEL=m
+CONFIG_CRYPTO_CHACHA20_X86_64=m
+CONFIG_CRYPTO_POLY1305_X86_64=m
+
+# =========================
+# Gaming (Proton/Wine)
+# =========================
+
+CONFIG_FUTEX=y
+CONFIG_FUTEX2=y
+
+# ntsync for better Wine/Proton NT synchronization (6.18+)
+CONFIG_NTSYNC=m
+
+# =========================
+# Preemption (Low Latency)
+# =========================
+
+# PREEMPT_LAZY - new in 6.13, best for desktop/gaming
+# Full preempt for RT tasks, lazy for normal (reduces overhead)
+CONFIG_PREEMPT_LAZY=y
+CONFIG_PREEMPT_DYNAMIC=y
+
+# =========================
+# Power Management
+# =========================
+
+# CPU idle driver
+CONFIG_CPU_IDLE=y
+CONFIG_CPU_IDLE_GOV_MENU=y
+CONFIG_CPU_IDLE_GOV_TEO=y
+
+# Intel/AMD specific idle
+CONFIG_INTEL_IDLE=y
+CONFIG_AMD_PMC=m
+
+# =========================
+# AI/ML Workloads
+# =========================
+
+# For CUDA/ROCm compute workloads
+CONFIG_DEVMEM=y
+CONFIG_STRICT_DEVMEM=n
+
+# Huge pages for ML memory allocations
+CONFIG_HUGETLBFS=y
+CONFIG_HUGETLB_PAGE=y

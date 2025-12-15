@@ -1,0 +1,23 @@
+# Reference archives (not for distribution)
+archive/
+
+# Build artifacts
+src/
+pkg/
+*.pkg.tar.*
+*.log
+*.src.tar.*
+
+# Generated configs
+config-*-*
+kernelconfig.new
+
+# Editor files
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# macOS
+.DS_Store

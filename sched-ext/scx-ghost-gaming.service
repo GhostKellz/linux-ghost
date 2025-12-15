@@ -1,0 +1,19 @@
+[Unit]
+Description=Linux Ghost Gaming Scheduler (scx_lavd)
+Documentation=https://github.com/sched-ext/scx
+After=multi-user.target
+Conflicts=scx.service scx-ghost-desktop.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/scx_lavd --performance
+# Restart on failure
+Restart=on-failure
+RestartSec=5
+# Don't kill child processes on stop
+KillMode=process
+# Run as root (required for sched-ext)
+User=root
+
+[Install]
+WantedBy=multi-user.target

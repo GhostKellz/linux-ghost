@@ -1,0 +1,105 @@
+#!/bin/bash
+# ghost-vcache - AMD 3D V-Cache mode switcher for X3D processors
+# Part of linux-ghost
+
+VCACHE_PATH="/sys/bus/platform/drivers/amd_x3d_vcache"
+VCACHE_DEV=$(find "$VCACHE_PATH" -maxdepth 1 -name "AMDI*" 2>/dev/null | head -1)
+
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m'
+
+usage() {
+    echo "Usage: ghost-vcache [cache|frequency|status|auto]"
+    echo ""
+    echo "Commands:"
+    echo "  cache      - Prefer 3D V-Cache CCD (best for gaming)"
+    echo "  frequency  - Prefer high-frequency CCD (best for productivity)"
+    echo "  status     - Show current mode"
+    echo "  auto       - Auto-detect based on running processes"
+    echo ""
+    echo "Examples:"
+    echo "  ghost-vcache cache     # Switch to gaming mode"
+    echo "  ghost-vcache status    # Check current mode"
+}
+
+check_x3d() {
+    if [[ ! -d "$VCACHE_PATH" ]]; then
+        echo -e "${RED}Error:${NC} AMD 3D V-Cache driver not loaded"
+        echo "Ensure CONFIG_AMD_3D_VCACHE=y in kernel config"
+        exit 1
+    fi
+
+    if [[ -z "$VCACHE_DEV" ]]; then
+        echo -e "${RED}Error:${NC} No X3D processor detected"
+        echo "This feature requires AMD Ryzen X3D (9950X3D, 7950X3D, etc.)"
+        exit 1
+    fi
+}
+
+get_mode() {
+    cat "$VCACHE_DEV/amd_x3d_mode" 2>/dev/null || echo "unknown"
+}
+
+set_mode() {
+    local mode="$1"
+    echo "$mode" > "$VCACHE_DEV/amd_x3d_mode" 2>/dev/null
+    if [[ $? -eq 0 ]]; then
+        echo -e "${GREEN}V-Cache mode set to:${NC} $mode"
+    else
+        echo -e "${RED}Failed to set V-Cache mode${NC}"
+        echo "Try running with sudo"
+        exit 1
+    fi
+}
+
+auto_mode() {
+    # Check for common gaming processes
+    local gaming_procs="steam|gamescope|wine|proton|lutris|heroic|bottles"
+
+    if pgrep -i "$gaming_procs" > /dev/null 2>&1; then
+        echo -e "${BLUE}Gaming process detected, switching to cache mode${NC}"
+        set_mode "cache"
+    else
+        echo -e "${BLUE}No gaming process detected, using frequency mode${NC}"
+        set_mode "frequency"
+    fi
+}
+
+status() {
+    local current=$(get_mode)
+    echo -e "${BLUE}Linux Ghost V-Cache Status${NC}"
+    echo "================================"
+    echo -e "Processor:    ${GREEN}AMD Ryzen X3D${NC}"
+    echo -e "Driver:       ${GREEN}amd_x3d_vcache${NC}"
+    echo -e "Current mode: ${YELLOW}${current}${NC}"
+    echo ""
+    echo "Modes:"
+    echo "  cache     - Tasks prefer 3D V-Cache CCD (gaming)"
+    echo "  frequency - Tasks prefer high-frequency CCD (productivity)"
+}
+
+case "$1" in
+    cache)
+        check_x3d
+        set_mode "cache"
+        ;;
+    frequency|freq)
+        check_x3d
+        set_mode "frequency"
+        ;;
+    status|show)
+        check_x3d
+        status
+        ;;
+    auto)
+        check_x3d
+        auto_mode
+        ;;
+    *)
+        usage
+        exit 1
+        ;;
+esac

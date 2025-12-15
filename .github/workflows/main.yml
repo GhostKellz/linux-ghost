@@ -1,0 +1,112 @@
+name: Linux Ghost Kernel Build
+
+on:
+  push:
+    branches: [ master, main ]
+    paths:
+      - 'PKGBUILD'
+      - 'config/**'
+      - 'patches/**'
+      - 'nvidia/**'
+  pull_request:
+    branches: [ master, main ]
+  workflow_dispatch:
+    inputs:
+      kernel_version:
+        description: 'Kernel version (e.g., 6.18.1)'
+        required: false
+        default: ''
+
+jobs:
+  validate:
+    name: Validate PKGBUILD
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Arch Linux
+        run: |
+          pacman -Syu --noconfirm
+          pacman -S --noconfirm base-devel namcap
+
+      - name: Validate PKGBUILD syntax
+        run: |
+          namcap PKGBUILD || true
+
+      - name: Check PKGBUILD sources
+        run: |
+          source PKGBUILD
+          echo "Kernel version: ${pkgver}"
+          echo "Package base: ${pkgbase}"
+
+  build:
+    name: Build Kernel
+    needs: validate
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup build environment
+        run: |
+          pacman -Syu --noconfirm
+          pacman -S --noconfirm \
+            base-devel bc cpio gettext libelf pahole perl python \
+            tar xz zstd clang llvm lld rust rust-bindgen rust-src \
+            git wget
+
+      - name: Create build user
+        run: |
+          useradd -m builder
+          chown -R builder:builder .
+          echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
+
+      - name: Download sources
+        run: |
+          su builder -c "makepkg -od --noconfirm"
+
+      - name: Build kernel (config only)
+        run: |
+          # Only validate config generation, full build is too long for CI
+          su builder -c "makepkg -o --noconfirm"
+        env:
+          _localmodcfg: "no"
+          _build_nvidia_open: "no"
+
+      - name: Upload config artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kernel-config
+          path: |
+            src/linux-*/.config
+          if-no-files-found: ignore
+
+  release:
+    name: Create Release
+    needs: build
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Get version
+        id: version
+        run: |
+          source PKGBUILD
+          echo "version=${pkgver}-${pkgrel}" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          name: Linux Ghost ${{ steps.version.outputs.version }}
+          draft: true
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
