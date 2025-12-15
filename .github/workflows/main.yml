@@ -37,8 +37,10 @@ jobs:
           namcap PKGBUILD || true
 
       - name: Check PKGBUILD sources
+        shell: bash
         run: |
-          source PKGBUILD
+          ls -la
+          source ./PKGBUILD
           echo "Kernel version: ${pkgver}"
           echo "Package base: ${pkgbase}"
 
@@ -98,8 +100,14 @@ jobs:
       - name: Get version
         id: version
         run: |
-          source PKGBUILD
-          echo "version=${pkgver}-${pkgrel}" >> $GITHUB_OUTPUT
+          # Debug: show files
+          ls -la
+          # Extract version from PKGBUILD without sourcing (avoids bash/arch dependencies)
+          _major=$(grep '^_major=' PKGBUILD | cut -d= -f2)
+          _minor=$(grep '^_minor=' PKGBUILD | cut -d= -f2)
+          pkgrel=$(grep '^pkgrel=' PKGBUILD | cut -d= -f2)
+          echo "version=${_major}.${_minor}-${pkgrel}" >> $GITHUB_OUTPUT
+          echo "Detected version: ${_major}.${_minor}-${pkgrel}"
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
