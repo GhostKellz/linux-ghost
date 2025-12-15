@@ -187,8 +187,8 @@ _nv_open_pkg="NVIDIA-kernel-module-source-${_nv_ver}"
 
 source=(
     "${_kernel_src}"
-    "config::https://raw.githubusercontent.com/GhostKellz/linux-ghost/refs/heads/main/config/config"
-    "ghost.fragment::https://raw.githubusercontent.com/GhostKellz/linux-ghost/refs/heads/main/config/ghost.fragment"
+    "kernel.config::https://raw.githubusercontent.com/GhostKellz/linux-ghost/refs/heads/main/config/config"
+    "kernel.fragment::https://raw.githubusercontent.com/GhostKellz/linux-ghost/refs/heads/main/config/ghost.fragment"
     # CachyOS base patches (amd-pstate, bbr3, sched-ext, block opts, etc.)
     "${_patchsource}/all/0001-cachyos-base-all.patch"
 )
@@ -291,12 +291,12 @@ prepare() {
     done
 
     echo "Setting config..."
-    cp "${startdir}/config" .config
+    cp "${startdir}/kernel.config" .config
 
     # Apply ghost.fragment config overrides
-    if [[ -f "${startdir}/ghost.fragment" ]]; then
-        echo "Applying ghost.fragment config..."
-        scripts/kconfig/merge_config.sh -m .config "${startdir}/ghost.fragment"
+    if [[ -f "${startdir}/kernel.fragment" ]]; then
+        echo "Applying kernel.fragment config..."
+        scripts/kconfig/merge_config.sh -m .config "${startdir}/kernel.fragment"
     fi
 
     ### ============================================================
