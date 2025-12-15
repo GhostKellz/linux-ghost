@@ -74,8 +74,10 @@ jobs:
       - name: Get version
         id: version
         run: |
-          source PKGBUILD
-          echo "version=${pkgver}-${pkgrel}" >> $GITHUB_OUTPUT
+          _major=$(grep '^_major=' PKGBUILD | cut -d= -f2)
+          _minor=$(grep '^_minor=' PKGBUILD | cut -d= -f2)
+          _pkgrel=$(grep '^pkgrel=' PKGBUILD | cut -d= -f2)
+          echo "version=${_major}.${_minor}-${_pkgrel}" >> $GITHUB_OUTPUT
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
