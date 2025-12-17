@@ -59,6 +59,7 @@ jobs:
         run: |
           cd src/linux-*/
           echo "=== Starting compile test ==="
+          make olddefconfig
           make -j$(nproc) vmlinux
           make -j$(nproc) modules_prepare
           echo "=== Compile test PASSED ==="
