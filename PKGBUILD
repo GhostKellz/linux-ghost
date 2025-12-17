@@ -105,7 +105,8 @@
 : "${_zen5_x3d:=yes}"
 
 ### ACS Override (for VFIO/GPU passthrough)
-: "${_acs_override:=yes}"
+# Note: Already included in CachyOS base patch
+: "${_acs_override:=no}"
 
 ### ============================================================
 ### INTERNAL - Version Configuration
