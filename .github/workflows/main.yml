@@ -13,70 +13,57 @@ on:
   workflow_dispatch:
 
 jobs:
-  validate:
-    name: Validate PKGBUILD
+  build:
+    name: Build Kernel
     runs-on: self-hosted
+    timeout-minutes: 45
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Validate PKGBUILD syntax
-        run: |
-          echo "=== PKGBUILD Validation ==="
-          namcap PKGBUILD || true
+      - name: Clean workspace
+        run: rm -rf src pkg *.tar.* 2>/dev/null || true
 
-      - name: Extract version info
-        id: version
+      - name: Show build configuration
         run: |
           source ./PKGBUILD
-          echo "major=${_major}" >> $GITHUB_OUTPUT
-          echo "minor=${_minor}" >> $GITHUB_OUTPUT
-          echo "pkgver=${pkgver}" >> $GITHUB_OUTPUT
-          echo "Kernel version: ${_major}.${_minor}"
+          echo "=== Build Configuration ==="
+          echo "Kernel: ${_major}.${_minor}"
+          echo "Scheduler: ${_cpusched}"
+          echo "Compiler: ${_compiler}"
+          echo "LTO: ${_lto_mode}"
 
-  build-test:
-    name: Compile Test
-    needs: validate
-    runs-on: self-hosted
-    timeout-minutes: 30
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Clean previous builds
-        run: |
-          rm -rf src pkg *.tar.* 2>/dev/null || true
-
-      - name: Download kernel sources
-        run: |
-          makepkg -od --noconfirm --skipinteg
-        env:
-          _localmodcfg: "no"
-          _nvidia_bundle: "no"
-
-      - name: Prepare source tree
-        run: |
-          makepkg -o --noconfirm --skipinteg
+      - name: Download sources and prepare
+        run: makepkg -o --noconfirm --skipinteg
         env:
           _localmodcfg: "no"
           _nvidia_bundle: "no"
           _makenconfig: "no"
 
-      - name: Compile test (vmlinux + modules_prepare)
+      - name: Verify patches applied
+        run: |
+          cd src/linux-*/
+          echo "=== Applied Patches ==="
+          if [[ -f .patches_applied ]]; then
+            cat .patches_applied
+          else
+            echo "Checking git log for patches..."
+            git log --oneline -20 2>/dev/null || echo "Not a git repo"
+          fi
+
+          echo ""
+          echo "=== GHOST Scheduler Config ==="
+          grep -E "CONFIG_SCHED_GHOST|CONFIG_GHOST_" .config 2>/dev/null || echo "GHOST config not found"
+
+      - name: Compile kernel (vmlinux + modules_prepare)
         run: |
           cd src/linux-*/
           echo "=== Starting compile test ==="
-          echo "Config: $(grep CONFIG_SCHED_GHOST .config || echo 'GHOST not in config')"
-
-          # Compile vmlinux (catches most errors)
           make -j$(nproc) vmlinux
-
-          # Prepare modules (validates module configs)
           make -j$(nproc) modules_prepare
-
           echo "=== Compile test PASSED ==="
 
-      - name: Upload config artifact
+      - name: Upload config
         uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -87,27 +74,4 @@ jobs:
 
       - name: Cleanup
         if: always()
-        run: |
-          rm -rf src pkg *.tar.* 2>/dev/null || true
-
-  patch-check:
-    name: Verify Patches Apply
-    runs-on: self-hosted
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: List patches
-        run: |
-          echo "=== Patches to apply ==="
-          ls -la patches/*.patch 2>/dev/null || echo "No patches found"
-
-          echo ""
-          echo "=== Patch summary ==="
-          for p in patches/*.patch; do
-            if [[ -f "$p" ]]; then
-              lines=$(wc -l < "$p")
-              subject=$(head -5 "$p" | grep "^Subject:" | cut -d: -f2- || echo "Unknown")
-              echo "  $(basename $p): $lines lines -$subject"
-            fi
-          done
+        run: rm -rf src pkg *.tar.* 2>/dev/null || true

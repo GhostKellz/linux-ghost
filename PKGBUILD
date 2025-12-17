@@ -194,9 +194,9 @@ source=(
 )
 sha256sums=('SKIP' 'SKIP' 'SKIP' 'SKIP')
 
-# GHOST scheduler patch (local - our own scheduler based on BORE)
+# GHOST scheduler patch (our enhanced scheduler based on BORE)
 if [[ "$_cpusched" == "ghost" ]]; then
-    source+=("patches/0001-ghost-sched.patch")
+    source+=("0001-ghost-sched.patch::https://raw.githubusercontent.com/GhostKellz/linux-ghost/main/patches/0001-ghost-sched.patch")
     sha256sums+=('SKIP')
 fi
 
