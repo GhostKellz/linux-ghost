@@ -5,10 +5,21 @@
 # Apply with: scripts/kconfig/merge_config.sh -m .config ghost.fragment
 
 # =========================
+# GHOST Scheduler
+# =========================
+
+# GHOST scheduler (EEVDF + burst detection, Zen4/Zen5 optimized)
+# Based on BORE but maintained in linux-ghost
+CONFIG_SCHED_GHOST=y
+
+# Tuned base slice for gaming responsiveness (2ms)
+CONFIG_MIN_BASE_SLICE_NS=2000000
+
+# =========================
 # Scheduler & Performance
 # =========================
 
-# sched-ext support (for scx_lavd, scx_bpfland, etc.)
+# sched-ext support (for scx_lavd, scx_bpfland, scx_ghostbrew)
 CONFIG_SCHED_CLASS_EXT=y
 
 # BPF JIT for sched-ext and performance

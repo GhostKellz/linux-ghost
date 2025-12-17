@@ -12,9 +12,9 @@
 : "${_kernel_type:=stable}"
 
 ### Selecting the CPU scheduler
-# 'bore' - BORE on EEVDF (Recommended for desktop/gaming)
+# 'ghost' - GHOST Scheduler on EEVDF (Recommended for desktop/gaming, Zen4/Zen5 optimized)
 # 'eevdf' - Vanilla EEVDF (upstream default)
-: "${_cpusched:=bore}"
+: "${_cpusched:=ghost}"
 
 ### CPU compiler optimizations
 # 'native' - Auto-detect CPU (recommended when building on target machine)
@@ -143,7 +143,7 @@ else
     _compiler_suffix=""
 fi
 
-pkgdesc="Linux Ghost - EEVDF/BORE + Zenify + Zen5/X3D + RTX 5090 + sched-ext (${_compiler^^}${_compiler_suffix:+ }${_lto_mode^^} LTO)"
+pkgdesc="Linux Ghost - GHOST Scheduler + Zenify + Zen4/Zen5 X3D + RTX 5090 + sched-ext (${_compiler^^}${_compiler_suffix:+ }${_lto_mode^^} LTO)"
 pkgrel=1
 _kernver="$pkgver-$pkgrel"
 _kernuname="${pkgver}-${pkgbase#linux-}"
@@ -194,9 +194,9 @@ source=(
 )
 sha256sums=('SKIP' 'SKIP' 'SKIP' 'SKIP')
 
-# BORE scheduler patch
-if [[ "$_cpusched" == "bore" ]]; then
-    source+=("${_patchsource}/sched/0001-bore-cachy.patch")
+# GHOST scheduler patch (local - our own scheduler based on BORE)
+if [[ "$_cpusched" == "ghost" ]]; then
+    source+=("patches/0001-ghost-sched.patch")
     sha256sums+=('SKIP')
 fi
 
@@ -350,9 +350,9 @@ prepare() {
     scripts/config -e CACHY
 
     case "$_cpusched" in
-        bore)
-            echo "Enabling BORE scheduler..."
-            scripts/config -e SCHED_BORE
+        ghost)
+            echo "Enabling GHOST scheduler (Zen4/Zen5 X3D optimized)..."
+            scripts/config -e SCHED_GHOST
             ;;
         eevdf)
             echo "Using vanilla EEVDF scheduler..."

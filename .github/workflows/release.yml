@@ -1,0 +1,158 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to release (e.g., v6.18.1-1)'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build Release Packages
+    runs-on: self-hosted
+    timeout-minutes: 120
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Get version from tag
+        id: version
+        run: |
+          if [[ -n "${{ github.event.inputs.tag }}" ]]; then
+            TAG="${{ github.event.inputs.tag }}"
+          else
+            TAG="${GITHUB_REF#refs/tags/}"
+          fi
+          VERSION="${TAG#v}"
+          echo "tag=${TAG}" >> $GITHUB_OUTPUT
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "Building release: ${TAG} (${VERSION})"
+
+      - name: Clean workspace
+        run: |
+          rm -rf src pkg *.tar.* *.pkg.tar.zst 2>/dev/null || true
+
+      - name: Build kernel packages
+        run: |
+          # Full build with default options
+          makepkg -sf --noconfirm --skipinteg
+        env:
+          _localmodcfg: "no"
+          _nvidia_bundle: "no"
+          _build_debug: "no"
+
+      - name: List built packages
+        id: packages
+        run: |
+          echo "=== Built packages ==="
+          ls -lh *.pkg.tar.zst 2>/dev/null || echo "No packages found"
+
+          # Get package names for upload
+          PACKAGES=$(ls *.pkg.tar.zst 2>/dev/null | tr '\n' ' ')
+          echo "packages=${PACKAGES}" >> $GITHUB_OUTPUT
+
+      - name: Upload package artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-ghost-packages-${{ steps.version.outputs.version }}
+          path: "*.pkg.tar.zst"
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Upload config artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kernel-config-${{ steps.version.outputs.version }}
+          path: src/linux-*/.config
+          if-no-files-found: ignore
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: self-hosted
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Get version
+        id: version
+        run: |
+          if [[ -n "${{ github.event.inputs.tag }}" ]]; then
+            TAG="${{ github.event.inputs.tag }}"
+          else
+            TAG="${GITHUB_REF#refs/tags/}"
+          fi
+          VERSION="${TAG#v}"
+          echo "tag=${TAG}" >> $GITHUB_OUTPUT
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-ghost-packages-${{ steps.version.outputs.version }}
+          path: ./packages/
+
+      - name: Generate release notes
+        id: notes
+        run: |
+          source ./PKGBUILD
+
+          cat << 'EOF' > release_notes.md
+          ## Linux Ghost Kernel ${{ steps.version.outputs.version }}
+
+          ### Features
+          - **GHOST Scheduler** - Gaming-Hybrid Optimized Scheduler Technology
+          - **AMD Zen5/X3D** - Optimized for Ryzen 9000 series and X3D processors
+          - **V-Cache aware** - Routes gaming tasks to V-Cache CCD
+          - **sched-ext** - Support for BPF schedulers (scx_lavd, scx_bpfland, etc.)
+          - **Full LTO** - Link-time optimization for maximum performance
+          - **1000Hz tick** - Low latency for gaming
+
+          ### Build Configuration
+          - Compiler: LLVM/Clang with Full LTO
+          - CPU: Native optimizations
+          - Scheduler: GHOST on EEVDF
+          - Tick rate: 1000Hz
+          - Preemption: Full (low-latency)
+
+          ### Installation
+          ```bash
+          # Install with pacman
+          sudo pacman -U linux-ghost-*.pkg.tar.zst linux-ghost-headers-*.pkg.tar.zst
+
+          # Update bootloader
+          sudo grub-mkconfig -o /boot/grub/grub.cfg
+          # or for systemd-boot
+          sudo bootctl update
+          ```
+
+          ### Packages
+          EOF
+
+          ls -1 packages/*.pkg.tar.zst 2>/dev/null | while read pkg; do
+            echo "- \`$(basename $pkg)\`" >> release_notes.md
+          done
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: Linux Ghost ${{ steps.version.outputs.version }}
+          body_path: release_notes.md
+          draft: false
+          prerelease: false
+          files: packages/*.pkg.tar.zst
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Cleanup
+        if: always()
+        run: |
+          rm -rf packages release_notes.md 2>/dev/null || true

@@ -1,25 +1,16 @@
-name: Linux Ghost Kernel Build
-
-permissions:
-  contents: write
+name: Build Test
 
 on:
   push:
-    branches: [ master, main ]
+    branches: [main, master]
     paths:
       - 'PKGBUILD'
       - 'config/**'
       - 'patches/**'
-      - 'nvidia/**'
       - '.github/workflows/**'
   pull_request:
-    branches: [ master, main ]
+    branches: [main, master]
   workflow_dispatch:
-    inputs:
-      kernel_version:
-        description: 'Kernel version (e.g., 6.18.1)'
-        required: false
-        default: ''
 
 jobs:
   validate:
@@ -30,61 +21,93 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Validate PKGBUILD syntax
-        run: namcap PKGBUILD || true
+        run: |
+          echo "=== PKGBUILD Validation ==="
+          namcap PKGBUILD || true
 
-      - name: Check PKGBUILD sources
+      - name: Extract version info
+        id: version
         run: |
           source ./PKGBUILD
-          echo "Kernel version: ${pkgver}"
-          echo "Package base: ${pkgbase}"
+          echo "major=${_major}" >> $GITHUB_OUTPUT
+          echo "minor=${_minor}" >> $GITHUB_OUTPUT
+          echo "pkgver=${pkgver}" >> $GITHUB_OUTPUT
+          echo "Kernel version: ${_major}.${_minor}"
 
-  build:
-    name: Build Kernel
+  build-test:
+    name: Compile Test
     needs: validate
     runs-on: self-hosted
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Download sources
-        run: makepkg -od --noconfirm --skipinteg
+      - name: Clean previous builds
+        run: |
+          rm -rf src pkg *.tar.* 2>/dev/null || true
 
-      - name: Build kernel (config only)
-        run: makepkg -o --noconfirm --skipinteg
+      - name: Download kernel sources
+        run: |
+          makepkg -od --noconfirm --skipinteg
         env:
           _localmodcfg: "no"
           _nvidia_bundle: "no"
 
+      - name: Prepare source tree
+        run: |
+          makepkg -o --noconfirm --skipinteg
+        env:
+          _localmodcfg: "no"
+          _nvidia_bundle: "no"
+          _makenconfig: "no"
+
+      - name: Compile test (vmlinux + modules_prepare)
+        run: |
+          cd src/linux-*/
+          echo "=== Starting compile test ==="
+          echo "Config: $(grep CONFIG_SCHED_GHOST .config || echo 'GHOST not in config')"
+
+          # Compile vmlinux (catches most errors)
+          make -j$(nproc) vmlinux
+
+          # Prepare modules (validates module configs)
+          make -j$(nproc) modules_prepare
+
+          echo "=== Compile test PASSED ==="
+
       - name: Upload config artifact
         uses: actions/upload-artifact@v4
+        if: always()
         with:
-          name: kernel-config
+          name: kernel-config-${{ github.sha }}
           path: src/linux-*/.config
           if-no-files-found: ignore
+          retention-days: 7
 
-  release:
-    name: Create Release
-    needs: build
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+      - name: Cleanup
+        if: always()
+        run: |
+          rm -rf src pkg *.tar.* 2>/dev/null || true
+
+  patch-check:
+    name: Verify Patches Apply
     runs-on: self-hosted
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Get version
-        id: version
+      - name: List patches
         run: |
-          _major=$(grep '^_major=' PKGBUILD | cut -d= -f2)
-          _minor=$(grep '^_minor=' PKGBUILD | cut -d= -f2)
-          _pkgrel=$(grep '^pkgrel=' PKGBUILD | cut -d= -f2)
-          echo "version=${_major}.${_minor}-${_pkgrel}" >> $GITHUB_OUTPUT
+          echo "=== Patches to apply ==="
+          ls -la patches/*.patch 2>/dev/null || echo "No patches found"
 
-      - name: Create Release
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: v${{ steps.version.outputs.version }}
-          name: Linux Ghost ${{ steps.version.outputs.version }}
-          draft: true
-          generate_release_notes: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          echo ""
+          echo "=== Patch summary ==="
+          for p in patches/*.patch; do
+            if [[ -f "$p" ]]; then
+              lines=$(wc -l < "$p")
+              subject=$(head -5 "$p" | grep "^Subject:" | cut -d: -f2- || echo "Unknown")
+              echo "  $(basename $p): $lines lines -$subject"
+            fi
+          done

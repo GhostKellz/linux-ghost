@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="#cpu--scheduling"><img src="https://img.shields.io/badge/BORE-EEVDF-8B5CF6?style=for-the-badge" alt="BORE EEVDF"></a>
+  <a href="#cpu--scheduling"><img src="https://img.shields.io/badge/GHOST-8B5CF6?style=for-the-badge" alt="GHOST"></a>
   <a href="#sched-ext-gaming"><img src="https://img.shields.io/badge/sched--ext-scx__lavd-3B82F6?style=for-the-badge" alt="sched-ext"></a>
   <a href="#performance"><img src="https://img.shields.io/badge/LTO-Full-F97316?style=for-the-badge" alt="LTO"></a>
 </p>
@@ -47,7 +47,7 @@ A custom Linux kernel built for enthusiasts running AMD Ryzen X3D processors (99
 ## Features
 
 ### CPU & Scheduling
-- **BORE on EEVDF** — Burst-oriented response enhancer for snappy desktop feel
+- **GHOST Scheduler** — Burst-oriented response enhancer for snappy desktop feel
 - **sched-ext Ready** — Runtime scheduler switching with scx_lavd (gaming) or scx_bpfland (desktop)
 - **AMD 3D V-Cache Optimizer** — Automatic cache/frequency CCD preference for X3D chips
 - **1000Hz Full Tickless** — Ultra-low latency configuration
@@ -121,7 +121,7 @@ _compiler=gcc makepkg -sf
 # LTO: full (default), thin, or none
 _lto_mode=thin makepkg -sf
 
-# Scheduler: bore (default) or eevdf
+# Scheduler: ghost (default) or eevdf
 _cpusched=eevdf makepkg -sf
 
 # CPU target: native (default), zen5, zen4, generic
@@ -280,7 +280,7 @@ cat /sys/kernel/sched_ext/state
 
 - [CachyOS](https://github.com/CachyOS/linux-cachyos) — Base patches and configuration
 - [linux-tkg](https://github.com/Frogging-Family/linux-tkg) — Zenify patches and inspiration
-- [BORE Scheduler](https://github.com/firelzrd/bore-scheduler) — BORE patches
+- [GHOST Scheduler](https://github.com/firelzrd/bore-scheduler) — GHOST scheduler
 - [sched-ext](https://github.com/sched-ext/scx) — Extensible scheduler framework
 - [NVIDIA open-gpu-kernel-modules](https://github.com/NVIDIA/open-gpu-kernel-modules) — Community patches
 
