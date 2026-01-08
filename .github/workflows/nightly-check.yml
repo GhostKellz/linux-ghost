@@ -5,18 +5,29 @@ on:
     # Run at 3 AM UTC daily
     - cron: '0 3 * * *'
   workflow_dispatch:
+    inputs:
+      force_build:
+        description: 'Force build even if no update'
+        type: boolean
+        default: false
 
 permissions:
-  issues: write
-  contents: read
+  contents: write
+  actions: write
 
 jobs:
   check-upstream:
     name: Check for New Kernel Releases
     runs-on: self-hosted
+    outputs:
+      needs_update: ${{ steps.compare.outputs.needs_update }}
+      update_to: ${{ steps.compare.outputs.update_to }}
+      new_minor: ${{ steps.compare.outputs.new_minor }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Get current version
         id: current
@@ -35,108 +46,48 @@ jobs:
           echo "latest=${LATEST}" >> $GITHUB_OUTPUT
           echo "kernel.org stable: ${LATEST}"
 
-      - name: Check CachyOS linux-cachyos
-        id: cachyos
-        run: |
-          # Get latest tag from CachyOS linux-cachyos repo
-          LATEST=$(curl -s "https://api.github.com/repos/CachyOS/linux-cachyos/tags" | jq -r '.[0].name' | sed 's/^v//')
-          echo "latest=${LATEST}" >> $GITHUB_OUTPUT
-          echo "CachyOS latest tag: ${LATEST}"
-
       - name: Compare versions
         id: compare
         run: |
           CURRENT="${{ steps.current.outputs.version }}"
           KERNELORG="${{ steps.kernelorg.outputs.latest }}"
-          CACHYOS="${{ steps.cachyos.outputs.latest }}"
+          FORCE="${{ github.event.inputs.force_build }}"
 
           echo "=== Version Comparison ==="
           echo "Current PKGBUILD: ${CURRENT}"
           echo "kernel.org stable: ${KERNELORG}"
-          echo "CachyOS tag: ${CACHYOS}"
+          echo "Force build: ${FORCE}"
 
-          # Extract major.minor from kernel.org (e.g., 6.18.2 -> 6.18)
+          CURRENT_MAJOR=$(echo "$CURRENT" | cut -d. -f1,2)
+          CURRENT_PATCH=$(echo "$CURRENT" | cut -d. -f3)
           KERNELORG_MAJOR=$(echo "$KERNELORG" | cut -d. -f1,2)
+          KERNELORG_PATCH=$(echo "$KERNELORG" | cut -d. -f3)
 
           NEEDS_UPDATE="false"
           UPDATE_TO=""
+          NEW_MINOR=""
 
-          # Check if kernel.org has newer patch release for same major.minor
-          CURRENT_MAJOR=$(echo "$CURRENT" | cut -d. -f1,2)
-          CURRENT_PATCH=$(echo "$CURRENT" | cut -d. -f3)
-          KERNELORG_PATCH=$(echo "$KERNELORG" | cut -d. -f3)
-
-          if [[ "$CURRENT_MAJOR" == "$KERNELORG_MAJOR" ]]; then
+          if [[ "$FORCE" == "true" ]]; then
+            NEEDS_UPDATE="true"
+            UPDATE_TO="$KERNELORG"
+            NEW_MINOR="$KERNELORG_PATCH"
+          elif [[ "$CURRENT_MAJOR" == "$KERNELORG_MAJOR" ]]; then
             if [[ "$KERNELORG_PATCH" -gt "$CURRENT_PATCH" ]]; then
               NEEDS_UPDATE="true"
               UPDATE_TO="$KERNELORG"
+              NEW_MINOR="$KERNELORG_PATCH"
               echo "New patch release available: ${KERNELORG}"
             fi
           elif [[ "$KERNELORG_MAJOR" > "$CURRENT_MAJOR" ]]; then
-            # New major.minor release
             NEEDS_UPDATE="true"
             UPDATE_TO="$KERNELORG"
+            NEW_MINOR="$KERNELORG_PATCH"
             echo "New major release available: ${KERNELORG}"
           fi
 
           echo "needs_update=${NEEDS_UPDATE}" >> $GITHUB_OUTPUT
           echo "update_to=${UPDATE_TO}" >> $GITHUB_OUTPUT
-          echo "kernelorg_major=${KERNELORG_MAJOR}" >> $GITHUB_OUTPUT
-
-      - name: Create issue if update available
-        if: steps.compare.outputs.needs_update == 'true'
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const current = '${{ steps.current.outputs.version }}';
-            const updateTo = '${{ steps.compare.outputs.update_to }}';
-            const kernelorg = '${{ steps.kernelorg.outputs.latest }}';
-            const cachyos = '${{ steps.cachyos.outputs.latest }}';
-
-            // Check if issue already exists
-            const issues = await github.rest.issues.listForRepo({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              state: 'open',
-              labels: 'kernel-update'
-            });
-
-            const existingIssue = issues.data.find(i => i.title.includes(updateTo));
-            if (existingIssue) {
-              console.log(`Issue already exists for ${updateTo}: #${existingIssue.number}`);
-              return;
-            }
-
-            // Create new issue
-            await github.rest.issues.create({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              title: `🆕 Kernel ${updateTo} available`,
-              labels: ['kernel-update'],
-              body: `## New Kernel Release Detected
-
-            | Source | Version |
-            |--------|---------|
-            | **Current PKGBUILD** | ${current} |
-            | **kernel.org stable** | ${kernelorg} |
-            | **CachyOS tag** | ${cachyos} |
-
-            ### Action Required
-            Update \`PKGBUILD\` version variables:
-            \`\`\`bash
-            _major=${updateTo.split('.').slice(0, 2).join('.')}
-            _minor=${updateTo.split('.')[2] || '0'}
-            \`\`\`
-
-            ### Links
-            - [kernel.org changelog](https://cdn.kernel.org/pub/linux/kernel/v${updateTo.split('.')[0]}.x/ChangeLog-${updateTo})
-            - [CachyOS releases](https://github.com/CachyOS/linux-cachyos/releases)
-
-            ---
-            *This issue was automatically created by the nightly upstream check.*`
-            });
-
-            console.log(`Created issue for kernel ${updateTo}`);
+          echo "new_minor=${NEW_MINOR}" >> $GITHUB_OUTPUT
 
       - name: Summary
         run: |
@@ -146,10 +97,61 @@ jobs:
           echo "|--------|---------|" >> $GITHUB_STEP_SUMMARY
           echo "| Current PKGBUILD | ${{ steps.current.outputs.version }} |" >> $GITHUB_STEP_SUMMARY
           echo "| kernel.org stable | ${{ steps.kernelorg.outputs.latest }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| CachyOS tag | ${{ steps.cachyos.outputs.latest }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           if [[ "${{ steps.compare.outputs.needs_update }}" == "true" ]]; then
             echo "⚠️ **Update available:** ${{ steps.compare.outputs.update_to }}" >> $GITHUB_STEP_SUMMARY
+            echo "🚀 **Auto-building release...**" >> $GITHUB_STEP_SUMMARY
           else
             echo "✅ **Up to date**" >> $GITHUB_STEP_SUMMARY
           fi
+
+  auto-update:
+    name: Auto Update & Release
+    needs: check-upstream
+    if: needs.check-upstream.outputs.needs_update == 'true'
+    runs-on: self-hosted
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Update PKGBUILD version
+        run: |
+          NEW_VERSION="${{ needs.check-upstream.outputs.update_to }}"
+          NEW_MINOR="${{ needs.check-upstream.outputs.new_minor }}"
+          NEW_MAJOR=$(echo "$NEW_VERSION" | cut -d. -f1,2)
+
+          echo "Updating to kernel ${NEW_VERSION}"
+
+          # Update _minor in PKGBUILD
+          sed -i "s/^_minor=.*/_minor=${NEW_MINOR}/" PKGBUILD
+
+          # Update _major if changed
+          CURRENT_MAJOR=$(grep "^_major=" PKGBUILD | cut -d= -f2)
+          if [[ "$CURRENT_MAJOR" != "$NEW_MAJOR" ]]; then
+            sed -i "s/^_major=.*/_major=${NEW_MAJOR}/" PKGBUILD
+          fi
+
+          echo "Updated PKGBUILD:"
+          grep -E "^_major=|^_minor=" PKGBUILD
+
+      - name: Commit changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add PKGBUILD
+          git commit -m "chore: bump kernel to ${{ needs.check-upstream.outputs.update_to }}"
+          git push
+
+      - name: Create tag and trigger release
+        run: |
+          TAG="v${{ needs.check-upstream.outputs.update_to }}-1"
+          echo "Creating tag: ${TAG}"
+
+          git tag -a "${TAG}" -m "Release ${TAG}"
+          git push origin "${TAG}"
+
+          echo "🏷️ Created tag ${TAG} - release workflow will build packages"
