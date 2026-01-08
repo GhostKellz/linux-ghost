@@ -114,7 +114,7 @@
 
 # Stable kernel
 _major=6.18
-_minor=1
+_minor=3
 
 # RC kernel (when _kernel_type=rc)
 _rc_major=6.19
@@ -218,6 +218,10 @@ if [[ "$_clear_patches" == "yes" ]]; then
     sha256sums+=('SKIP')
 fi
 
+# Zen5 MZEN5 Kconfig patch (adds -march=znver5 support)
+source+=("ghostzen5.patch::https://raw.githubusercontent.com/GhostKellz/linux-ghost/main/patches/ghostzen5.patch")
+sha256sums+=('SKIP')
+
 # OpenRGB i2c support
 if [[ "$_openrgb" == "yes" ]]; then
     source+=("${_tkgpatch}/0014-OpenRGB.patch")
@@ -308,25 +312,23 @@ prepare() {
         MARCH="${_processor_opt^^}"
         case "$MARCH" in
             ZEN5)
-                echo "Enabling Zen5 (9950X3D) optimizations..."
-                # Try MZEN5 first, fall back to native
-                scripts/config -d GENERIC_CPU -d MZEN4 -e MZEN5 -d X86_NATIVE_CPU 2>/dev/null || \
-                scripts/config -d GENERIC_CPU -d MZEN4 -e X86_NATIVE_CPU
+                echo "Enabling Zen5 (9950X3D) optimizations (-march=znver5)..."
+                scripts/config -d GENERIC_CPU -d MZEN4 -e MZEN5 -d X86_NATIVE_CPU
                 ;;
             ZEN4)
-                echo "Enabling Zen4 (7950X3D) optimizations..."
-                scripts/config -d GENERIC_CPU -e MZEN4 -d X86_NATIVE_CPU
+                echo "Enabling Zen4 (7950X3D) optimizations (-march=znver4)..."
+                scripts/config -d GENERIC_CPU -e MZEN4 -d MZEN5 -d X86_NATIVE_CPU
                 ;;
             NATIVE)
                 echo "Enabling native CPU optimizations (auto-detect)..."
-                scripts/config -d GENERIC_CPU -d MZEN4 -e X86_NATIVE_CPU
+                scripts/config -d GENERIC_CPU -d MZEN4 -d MZEN5 -e X86_NATIVE_CPU
                 ;;
             GENERIC*)
-                scripts/config -e GENERIC_CPU -d MZEN4 -d X86_NATIVE_CPU
+                scripts/config -e GENERIC_CPU -d MZEN4 -d MZEN5 -d X86_NATIVE_CPU
                 ;;
         esac
     else
-        scripts/config -d GENERIC_CPU -d MZEN4 -e X86_NATIVE_CPU
+        scripts/config -d GENERIC_CPU -d MZEN4 -d MZEN5 -e X86_NATIVE_CPU
     fi
 
     ### Zen5 X3D specific optimizations
@@ -342,6 +344,14 @@ prepare() {
         # High core count
         scripts/config --set-val NR_CPUS 32
     fi
+
+    ### PCIe optimizations for high-end GPU (RTX 5090 / high-bandwidth)
+    echo "Enabling PCIe performance optimizations..."
+    scripts/config -d PCIEASPM_DEFAULT \
+        -d PCIEASPM_POWERSAVE \
+        -d PCIEASPM_POWER_SUPERSAVE \
+        -e PCIEASPM_PERFORMANCE \
+        -e PCI_REALLOC_ENABLE_AUTO
 
     ### ============================================================
     ### SCHEDULER CONFIGURATION
