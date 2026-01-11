@@ -114,7 +114,7 @@
 
 # Stable kernel
 _major=6.18
-_minor=3
+_minor=4
 
 # RC kernel (when _kernel_type=rc)
 _rc_major=6.19
