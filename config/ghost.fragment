@@ -1,6 +1,7 @@
 # =========================
 # Linux Ghost Config Fragment
 # =========================
+# For kernel 6.19+
 # Based on ghostkellz.myfrag from linux-tkg
 # Apply with: scripts/kconfig/merge_config.sh -m .config ghost.fragment
 
@@ -315,3 +316,38 @@ CONFIG_STRICT_DEVMEM=n
 # Huge pages for ML memory allocations
 CONFIG_HUGETLBFS=y
 CONFIG_HUGETLB_PAGE=y
+
+# =========================
+# 6.19 New Features
+# =========================
+
+# Kexec Handover (KHO) - Live Update Orchestrator
+# Allows VM-preserving kexec reboots for gaming VMs
+CONFIG_KEXEC_HANDOVER=y
+CONFIG_KEXEC_HANDOVER_ENABLE_DEFAULT=y
+
+# User namespace unprivileged access (containers)
+CONFIG_USER_NS_UNPRIVILEGED=y
+
+# SFrame stack unwinding for efficient profiling (perf)
+CONFIG_UNWIND_USER=y
+CONFIG_HAVE_UNWIND_USER_FP=y
+
+# HDR Color Pipeline (DRM) - automatically enabled with AMDGPU
+# Hardware HDR support for gaming displays
+
+# ext4 large block size support (50% buffered I/O improvement)
+CONFIG_EXT4_FS=y
+
+# =========================
+# PCIe Performance (RTX 5090 / high-bandwidth GPU)
+# =========================
+
+# PCIe End-to-End CRC (data integrity)
+CONFIG_PCIE_ECRC=y
+# Performance mode (disable power saving on PCIe)
+CONFIG_PCIEASPM_PERFORMANCE=y
+# Auto-reallocate PCIe resources
+CONFIG_PCI_REALLOC_ENABLE_AUTO=y
+# PCIe AER (Advanced Error Reporting)
+CONFIG_PCIEAER=y

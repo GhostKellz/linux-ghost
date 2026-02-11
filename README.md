@@ -5,7 +5,7 @@
 <p align="center">
   <a href="#amd-zenx3d"><img src="https://img.shields.io/badge/AMD%20Ryzen-X3D-ED1C24?style=for-the-badge&logo=amd&logoColor=white" alt="AMD Ryzen X3D"></a>
   <a href="#nvidia-rtx-20"><img src="https://img.shields.io/badge/NVIDIA-RTX-76B900?style=for-the-badge&logo=nvidia&logoColor=white" alt="NVIDIA RTX"></a>
-  <a href="#nvidia-rtx-20"><img src="https://img.shields.io/badge/nvidia--open-580+-00D4AA?style=for-the-badge&logo=nvidia&logoColor=white" alt="nvidia-open"></a>
+  <a href="#nvidia-rtx-20"><img src="https://img.shields.io/badge/nvidia--open-590+-00D4AA?style=for-the-badge&logo=nvidia&logoColor=white" alt="nvidia-open"></a>
 </p>
 
 <p align="center">
@@ -18,7 +18,7 @@
   <a href="#build-options"><img src="https://img.shields.io/badge/Clang-19-5C6BC0?style=for-the-badge&logo=llvm&logoColor=white" alt="Clang"></a>
   <a href="#build-options"><img src="https://img.shields.io/badge/GCC-14%2F15-D32F2F?style=for-the-badge&logo=gnu&logoColor=white" alt="GCC"></a>
   <a href="#quick-start"><img src="https://img.shields.io/badge/Arch-Linux-1793D1?style=for-the-badge&logo=archlinux&logoColor=white" alt="Arch Linux"></a>
-  <a href="#"><img src="https://img.shields.io/badge/Linux-6.18+-FCC624?style=for-the-badge&logo=linux&logoColor=black" alt="Kernel 6.18+"></a>
+  <a href="#"><img src="https://img.shields.io/badge/Linux-6.19+-FCC624?style=for-the-badge&logo=linux&logoColor=black" alt="Kernel 6.19+"></a>
 </p>
 
 ---

@@ -17,8 +17,8 @@ _compiler=gcc _lto_mode=thin _cpusched=eevdf makepkg -sf
 
 | Value | Description |
 |-------|-------------|
-| `stable` | Stable release (6.18.x) - **default** |
-| `rc` | Release candidate (6.19-rcX) |
+| `stable` | Stable release (6.19.x) - **default** |
+| `rc` | Release candidate (7.0-rcX) |
 
 ```bash
 # Build RC kernel
@@ -46,12 +46,16 @@ _compiler=gcc makepkg -sf
 | Value | LLVM | GCC | Description |
 |-------|------|-----|-------------|
 | `full` | Full LTO | GCC LTO | Best performance, slow build - **default** |
-| `thin` | ThinLTO | Falls back to full | Faster build, good performance |
+| `thin` | ThinLTO | N/A | Faster build, good performance |
+| `thin-dist` | Distributed ThinLTO | N/A | Fastest multi-core build (6.19+) |
 | `none` | Disabled | Disabled | Fastest build, no LTO |
 
 ```bash
 # Faster build with ThinLTO
 _lto_mode=thin makepkg -sf
+
+# Distributed ThinLTO (6.19+ feature, faster compile)
+_lto_mode=thin-dist makepkg -sf
 ```
 
 ---
@@ -62,11 +66,18 @@ _lto_mode=thin makepkg -sf
 
 | Value | Description |
 |-------|-------------|
-| `bore` | BORE on EEVDF - **default** |
+| `ghost` | GHOST Scheduler (enhanced BORE, Zen5/X3D optimized) - **default** |
 | `eevdf` | Vanilla EEVDF |
 
+GHOST scheduler provides:
+- Gaming workload detection (Wine/Proton/Steam priority)
+- Audio thread priority (PipeWire, PulseAudio, JACK)
+- AMD Zen5/X3D topology awareness (CCD/CCX detection)
+- V-Cache pressure tracking
+- Network stack priority for online gaming
+
 ```bash
-# Vanilla EEVDF
+# Vanilla EEVDF (no gaming optimizations)
 _cpusched=eevdf makepkg -sf
 ```
 

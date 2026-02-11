@@ -104,11 +104,11 @@ To refresh patches from upstream:
 
 ```bash
 # CachyOS patches
-curl -LO "https://raw.githubusercontent.com/cachyos/kernel-patches/master/6.18/all/0001-cachyos-base-all.patch"
-curl -LO "https://raw.githubusercontent.com/cachyos/kernel-patches/master/6.18/sched/0001-bore-cachy.patch"
+curl -LO "https://raw.githubusercontent.com/cachyos/kernel-patches/master/6.19/all/0001-cachyos-base-all.patch"
+curl -LO "https://raw.githubusercontent.com/cachyos/kernel-patches/master/6.19/sched/0001-bore-cachy.patch"
 
 # linux-tkg patches
-curl -LO "https://raw.githubusercontent.com/Frogging-Family/linux-tkg/master/linux-tkg-patches/6.18/0003-glitched-base.patch"
+curl -LO "https://raw.githubusercontent.com/Frogging-Family/linux-tkg/master/linux-tkg-patches/6.19/0003-glitched-base.patch"
 ```
 
 ## References

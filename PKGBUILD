@@ -29,12 +29,12 @@
 : "${_compiler:=llvm}"
 
 ### LTO (Link Time Optimization)
-# For LLVM: 'full', 'thin', or 'none'
+# For LLVM: 'full', 'thin', 'thin-dist', or 'none'
 #   full - slower build, potentially best performance
 #   thin - faster build, good performance
-# For GCC: 'full', 'thin', or 'none'
+#   thin-dist - distributed ThinLTO (faster compile, good perf) [NEW in 6.19]
+# For GCC: 'full' or 'none'
 #   full - GCC LTO (slow, high memory usage)
-#   thin - Not supported for GCC, falls back to full
 : "${_lto_mode:=full}"
 
 ### Enable Zenify gaming optimizations (from Zen/Liquorix)
@@ -113,11 +113,12 @@
 ### ============================================================
 
 # Stable kernel
-_major=6.18
-_minor=4
+_major=6.19
+_minor=0
 
 # RC kernel (when _kernel_type=rc)
-_rc_major=6.19
+# Note: Linux 7.0 follows 6.19 (no 6.20)
+_rc_major=7.0
 _rc_ver=rc1
 
 if [[ "$_kernel_type" == "rc" ]]; then
@@ -127,7 +128,12 @@ if [[ "$_kernel_type" == "rc" ]]; then
     _kernel_src="https://git.kernel.org/torvalds/t/linux-${_rc_major}-${_rc_ver}.tar.gz"
 else
     pkgver="${_major}.${_minor}"
-    _stable="${_major}.${_minor}"
+    # kernel.org uses linux-X.Y.tar.xz for .0 releases, linux-X.Y.Z.tar.xz for patches
+    if [[ "$_minor" == "0" ]]; then
+        _stable="${_major}"
+    else
+        _stable="${_major}.${_minor}"
+    fi
     _srcname="linux-${_stable}"
     _kernel_src="https://cdn.kernel.org/pub/linux/kernel/v${_major%%.*}.x/${_srcname}.tar.xz"
 fi
@@ -144,7 +150,7 @@ else
     _compiler_suffix=""
 fi
 
-pkgdesc="Linux Ghost - GHOST Scheduler + Zenify + Zen4/Zen5 X3D + RTX 5090 + sched-ext (${_compiler^^}${_compiler_suffix:+ }${_lto_mode^^} LTO)"
+pkgdesc="Linux Ghost 6.19 - GHOST Scheduler + Zenify + Zen4/Zen5 X3D + RTX 5090 + sched-ext (${_compiler^^}${_compiler_suffix:+ }${_lto_mode^^} LTO)"
 pkgrel=1
 _kernver="$pkgver-$pkgrel"
 _kernuname="${pkgver}-${pkgbase#linux-}"
@@ -183,7 +189,8 @@ _patchsource="https://raw.githubusercontent.com/cachyos/kernel-patches/master/${
 _tkgpatch="https://raw.githubusercontent.com/Frogging-Family/linux-tkg/master/linux-tkg-patches/${_major}"
 
 # NVIDIA versions - RTX 5090 (Blackwell) requires 570+
-_nv_ver=580.105.08
+# 590.48.01 adds 6.19 kernel support
+_nv_ver=590.48.01
 _nv_open_pkg="NVIDIA-kernel-module-source-${_nv_ver}"
 
 source=(
@@ -244,12 +251,14 @@ if [[ "$_nvidia_bundle" == "yes" ]]; then
         "nv-ibt-support.patch::nvidia/Add-IBT-support.diff"
         "nv-fbdev-fix.patch::nvidia/6.11-fbdev.diff"
         "nv-gcc15.patch::nvidia/gcc-15.diff"
+        # 6.19 kernel support: UVM HMM/PMM API changes (PR #1015)
+        "nv-6.19-uvm-fix.patch::nvidia/0003-uvm-619-hmm-pmm-fix.patch"
         # Exclusive: Thunderbolt eGPU hot-plug support (PR #985)
         "nv-thunderbolt-egpu.patch::nvidia/0001-thunderbolt-egpu-hotplug.patch"
         # Exclusive: NULL pointer deref fix (PR #978)
         "nv-uvm-null-deref.patch::nvidia/0002-uvm-null-ptr-deref-fix.patch"
     )
-    sha256sums+=('SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP')
+    sha256sums+=('SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP')
 fi
 
 # Build flags based on compiler choice
@@ -395,15 +404,19 @@ prepare() {
         case "$_lto_mode" in
             thin)
                 echo "Enabling Clang ThinLTO..."
-                scripts/config -e LTO_CLANG_THIN -d LTO_CLANG_FULL -d LTO_NONE
+                scripts/config -e LTO_CLANG_THIN -d LTO_CLANG_THIN_DIST -d LTO_CLANG_FULL -d LTO_NONE
+                ;;
+            thin-dist)
+                echo "Enabling Clang Distributed ThinLTO (6.19+)..."
+                scripts/config -e LTO_CLANG_THIN_DIST -d LTO_CLANG_THIN -d LTO_CLANG_FULL -d LTO_NONE
                 ;;
             full)
                 echo "Enabling Clang Full LTO..."
-                scripts/config -e LTO_CLANG_FULL -d LTO_CLANG_THIN -d LTO_NONE
+                scripts/config -e LTO_CLANG_FULL -d LTO_CLANG_THIN -d LTO_CLANG_THIN_DIST -d LTO_NONE
                 ;;
             none)
                 echo "Disabling LTO..."
-                scripts/config -e LTO_NONE -d LTO_CLANG_THIN -d LTO_CLANG_FULL
+                scripts/config -e LTO_NONE -d LTO_CLANG_THIN -d LTO_CLANG_THIN_DIST -d LTO_CLANG_FULL
                 ;;
         esac
     else
@@ -590,6 +603,9 @@ prepare() {
 
         echo "Applying GCC 15 compatibility patch..."
         patch -Np1 -i "${srcdir}/nv-gcc15.patch" -d "${srcdir}/${_nv_open_pkg}/" || true
+
+        echo "Applying 6.19 UVM HMM/PMM fix (PR #1015)..."
+        patch -Np1 -i "${srcdir}/nv-6.19-uvm-fix.patch" -d "${srcdir}/${_nv_open_pkg}/" || true
 
         # linux-ghost EXCLUSIVE patches
         echo "Applying Thunderbolt eGPU hot-plug support (PR #985)..."
