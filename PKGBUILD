@@ -114,7 +114,7 @@
 
 # Stable kernel
 _major=6.19
-_minor=0
+_minor=2
 
 # RC kernel (when _kernel_type=rc)
 # Note: Linux 7.0 follows 6.19 (no 6.20)
