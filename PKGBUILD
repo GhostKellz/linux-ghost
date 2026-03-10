@@ -114,7 +114,7 @@
 
 # Stable kernel
 _major=6.19
-_minor=2
+_minor=6
 
 # RC kernel (when _kernel_type=rc)
 # Note: Linux 7.0 follows 6.19 (no 6.20)
@@ -189,8 +189,8 @@ _patchsource="https://raw.githubusercontent.com/cachyos/kernel-patches/master/${
 _tkgpatch="https://raw.githubusercontent.com/Frogging-Family/linux-tkg/master/linux-tkg-patches/${_major}"
 
 # NVIDIA versions - RTX 5090 (Blackwell) requires 570+
-# 590.48.01 adds 6.19 kernel support
-_nv_ver=590.48.01
+# 595.45.04 has native 6.19 kernel support
+_nv_ver=595.45.04
 _nv_open_pkg="NVIDIA-kernel-module-source-${_nv_ver}"
 
 source=(
@@ -247,18 +247,12 @@ if [[ "$_nvidia_bundle" == "yes" ]]; then
         "https://download.nvidia.com/XFree86/NVIDIA-kernel-module-source/${_nv_open_pkg}.tar.xz"
         # linux-ghost exclusive NVIDIA patches
         "nvidia-ghost.conf::nvidia/nvidia-ghost.conf"
-        "nv-atomic-modesetting.patch::nvidia/Enable-atomic-kernel-modesetting-by-default.diff"
         "nv-ibt-support.patch::nvidia/Add-IBT-support.diff"
-        "nv-fbdev-fix.patch::nvidia/6.11-fbdev.diff"
         "nv-gcc15.patch::nvidia/gcc-15.diff"
-        # 6.19 kernel support: UVM HMM/PMM API changes (PR #1015)
-        "nv-6.19-uvm-fix.patch::nvidia/0003-uvm-619-hmm-pmm-fix.patch"
         # Exclusive: Thunderbolt eGPU hot-plug support (PR #985)
         "nv-thunderbolt-egpu.patch::nvidia/0001-thunderbolt-egpu-hotplug.patch"
-        # Exclusive: NULL pointer deref fix (PR #978)
-        "nv-uvm-null-deref.patch::nvidia/0002-uvm-null-ptr-deref-fix.patch"
     )
-    sha256sums+=('SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP')
+    sha256sums+=('SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP')
 fi
 
 # Build flags based on compiler choice
@@ -591,28 +585,16 @@ prepare() {
         cd "${srcdir}"
         echo "Preparing NVIDIA open modules with linux-ghost patches..."
 
-        # Standard compatibility patches
-        echo "Applying atomic modesetting patch..."
-        patch -Np1 -i "${srcdir}/nv-atomic-modesetting.patch" -d "${srcdir}/${_nv_open_pkg}/kernel-open" || true
-
+        # Compatibility patches (IBT/SLS hardening, GCC 15)
         echo "Applying IBT support patch..."
         patch -Np1 -i "${srcdir}/nv-ibt-support.patch" -d "${srcdir}/${_nv_open_pkg}/" || true
-
-        echo "Applying fbdev fix patch..."
-        patch -Np1 -i "${srcdir}/nv-fbdev-fix.patch" -d "${srcdir}/${_nv_open_pkg}/" || true
 
         echo "Applying GCC 15 compatibility patch..."
         patch -Np1 -i "${srcdir}/nv-gcc15.patch" -d "${srcdir}/${_nv_open_pkg}/" || true
 
-        echo "Applying 6.19 UVM HMM/PMM fix (PR #1015)..."
-        patch -Np1 -i "${srcdir}/nv-6.19-uvm-fix.patch" -d "${srcdir}/${_nv_open_pkg}/" || true
-
         # linux-ghost EXCLUSIVE patches
         echo "Applying Thunderbolt eGPU hot-plug support (PR #985)..."
         patch -Np1 -i "${srcdir}/nv-thunderbolt-egpu.patch" -d "${srcdir}/${_nv_open_pkg}/" || true
-
-        echo "Applying UVM NULL pointer deref fix (PR #978)..."
-        patch -Np1 -i "${srcdir}/nv-uvm-null-deref.patch" -d "${srcdir}/${_nv_open_pkg}/" || true
     fi
 }
 
@@ -766,7 +748,6 @@ _package-nvidia-open() {
 
     echo "==> linux-ghost NVIDIA exclusive patches applied:"
     echo "    - Thunderbolt eGPU hot-plug support (PR #985)"
-    echo "    - UVM NULL pointer deref fix (PR #978)"
     echo "    - GSP stutter mitigation config"
 }
 
