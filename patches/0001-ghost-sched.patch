@@ -52,7 +52,7 @@ diff --git a/include/linux/sched.h b/include/linux/sched.h
 index b469878de..a1b2c3d4e 100644
 --- a/include/linux/sched.h
 +++ b/include/linux/sched.h
-@@ -816,6 +816,81 @@ struct kmap_ctrl {
+@@ -816,6 +816,80 @@ struct kmap_ctrl {
  #endif
  };
 
@@ -133,7 +133,7 @@ index b469878de..a1b2c3d4e 100644
  struct task_struct {
  #ifdef CONFIG_THREAD_INFO_IN_TASK
  	/*
-@@ -874,6 +949,9 @@ struct task_struct {
+@@ -874,6 +948,9 @@ struct task_struct {
  #ifdef CONFIG_SCHED_CLASS_EXT
  	struct sched_ext_entity		scx;
  #endif
