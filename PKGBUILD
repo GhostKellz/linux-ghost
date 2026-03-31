@@ -114,7 +114,7 @@
 
 # Stable kernel
 _major=6.19
-_minor=6
+_minor=10
 
 # RC kernel (when _kernel_type=rc)
 # Note: Linux 7.0 follows 6.19 (no 6.20)
@@ -189,8 +189,8 @@ _patchsource="https://raw.githubusercontent.com/cachyos/kernel-patches/master/${
 _tkgpatch="https://raw.githubusercontent.com/Frogging-Family/linux-tkg/master/linux-tkg-patches/${_major}"
 
 # NVIDIA versions - RTX 5090 (Blackwell) requires 570+
-# 595.45.04 has native 6.19 kernel support
-_nv_ver=595.45.04
+# 595.58.03 has native 6.19 kernel support
+_nv_ver=595.58.03
 _nv_open_pkg="NVIDIA-kernel-module-source-${_nv_ver}"
 
 source=(
