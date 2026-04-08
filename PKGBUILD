@@ -114,28 +114,25 @@
 
 # Stable kernel
 _major=6.19
-_minor=10
+_minor=11
+_cachyos_tagrel=2
 
 # RC kernel (when _kernel_type=rc)
 # Note: Linux 7.0 follows 6.19 (no 6.20)
 _rc_major=7.0
-_rc_ver=rc1
+_rc_ver=rc7
+_rc_cachyos_tagrel=2
 
 if [[ "$_kernel_type" == "rc" ]]; then
     pkgver="${_rc_major}.${_rc_ver/rc/}"
-    _stable="${_rc_major}-${_rc_ver}"
-    _srcname="linux-${_rc_major}-${_rc_ver}"
-    _kernel_src="https://git.kernel.org/torvalds/t/linux-${_rc_major}-${_rc_ver}.tar.gz"
+    _srctag="cachyos-${_rc_major}-${_rc_ver}-${_rc_cachyos_tagrel}"
+    _srcname="${_srctag}"
+    _kernel_src="https://github.com/CachyOS/linux/releases/download/${_srctag}/${_srctag}.tar.gz"
 else
     pkgver="${_major}.${_minor}"
-    # kernel.org uses linux-X.Y.tar.xz for .0 releases, linux-X.Y.Z.tar.xz for patches
-    if [[ "$_minor" == "0" ]]; then
-        _stable="${_major}"
-    else
-        _stable="${_major}.${_minor}"
-    fi
-    _srcname="linux-${_stable}"
-    _kernel_src="https://cdn.kernel.org/pub/linux/kernel/v${_major%%.*}.x/${_srcname}.tar.xz"
+    _srctag="cachyos-${_major}.${_minor}-${_cachyos_tagrel}"
+    _srcname="${_srctag}"
+    _kernel_src="https://github.com/CachyOS/linux/releases/download/${_srctag}/${_srctag}.tar.gz"
 fi
 
 # Package naming based on compiler
@@ -197,10 +194,9 @@ source=(
     "${_kernel_src}"
     "kernel.config::https://raw.githubusercontent.com/GhostKellz/linux-ghost/refs/heads/main/config/config"
     "kernel.fragment::https://raw.githubusercontent.com/GhostKellz/linux-ghost/refs/heads/main/config/ghost.fragment"
-    # CachyOS base patches (amd-pstate, bbr3, sched-ext, block opts, etc.)
-    "${_patchsource}/all/0001-cachyos-base-all.patch"
+    # CachyOS pre-patched source already includes: amd-pstate, bbr3, sched-ext, block opts, etc.
 )
-sha256sums=('SKIP' 'SKIP' 'SKIP' 'SKIP')
+sha256sums=('SKIP' 'SKIP' 'SKIP')
 
 # GHOST scheduler patch (our enhanced scheduler based on BORE)
 if [[ "$_cpusched" == "ghost" ]]; then
