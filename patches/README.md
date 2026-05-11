@@ -1,115 +1,37 @@
 # Linux Ghost Patches
 
-This directory contains kernel patches for linux-ghost.
+This directory contains custom/modified kernel patches maintained by linux-ghost.
+Upstream patches from CachyOS and linux-tkg are fetched at build time from their respective repos.
 
-## Included Patches
+## Local Patches
 
-| Patch | Size | Source | Description |
-|-------|------|--------|-------------|
-| `0001-cachyos-base-all.patch` | 1.2M | CachyOS | Core patches: sched-ext, AMD P-State, BBR3, performance opts |
-| `0001-bore-cachy.patch` | 36K | CachyOS | BORE (Burst-Oriented Response Enhancer) on EEVDF |
-| `0003-glitched-base.patch` | 21K | linux-tkg | Zenify gaming/low-latency tuning |
-| `0006-add-acs-overrides_iommu.patch` | 6.6K | linux-tkg | ACS override for VFIO/GPU passthrough |
-| `0014-OpenRGB.patch` | 18K | linux-tkg | OpenRGB i2c controller support |
-| `dkms-clang.patch` | 2K | CachyOS | DKMS compatibility for clang-built kernels |
+| Patch | Source | Description |
+|-------|--------|-------------|
+| `ghost-sched-v2-linux7.patch` | linux-ghost | GHOST Scheduler v2 on EEVDF (gaming-optimized, Zen4/Zen5 tuned) |
+| `0003-glitched-base.patch` | linux-tkg (modified) | Zenify gaming/low-latency tuning, fixed for CachyOS 7.0 pre-patched source |
+| `ghostzen5.patch` | linux-ghost | CONFIG_MZEN5 support (-march=znver5) for Ryzen 9000 series |
+| `0012-misc-additions.patch` | linux-tkg (modified) | Magic Trackpad 2 fix, ondemand governor fix, max ASLR bits |
 
-## What Each Patch Does
+## Remote Patches (fetched at build time)
 
-### 0001-cachyos-base-all.patch (CachyOS Base)
-
-Comprehensive patch bundle containing:
-- **sched-ext support** - BPF extensible scheduler framework
-- **AMD P-State improvements** - Better frequency scaling for Zen processors
-- **BBR3** - Google's TCP congestion control algorithm
-- **Block layer optimizations** - I/O scheduler improvements
-- **Memory management** - THP and MGLRU enhancements
-- **Hardware enablement** - Latest AMD/Intel platform support
-
-### 0001-bore-cachy.patch (BORE Scheduler)
-
-Burst-Oriented Response Enhancer built on EEVDF:
-- Detects and prioritizes bursty interactive tasks
-- Improves desktop responsiveness and gaming frame pacing
-- Maintains fairness for background workloads
-
-### 0003-glitched-base.patch (Zenify)
-
-Gaming-focused tunings from linux-tkg/Liquorix:
-- Reduced scheduling latency
-- Optimized timer handling
-- Better context switch behavior for games
-
-### 0006-add-acs-overrides_iommu.patch (ACS Override)
-
-Enables IOMMU group separation for VFIO:
-- Required for single-GPU passthrough
-- Allows splitting PCIe devices into separate IOMMU groups
-- Essential for VM gaming setups
-
-### 0014-OpenRGB.patch
-
-I2C/SMBus controller access for RGB control:
-- Exposes motherboard SMBus to userspace
-- Required for OpenRGB to control RGB lighting
-
-### dkms-clang.patch
-
-Removes strict Werror flags for DKMS compatibility:
-- Allows building out-of-tree modules with clang kernels
-- Fixes nvidia-dkms and other DKMS modules on LLVM builds
+| Patch | Source | Condition |
+|-------|--------|-----------|
+| `0001-bore-cachy.patch` | CachyOS | `_cpusched=bore` |
+| `0003-glitched-eevdf-additions.patch` | linux-tkg | `_zenify=yes` (if available upstream) |
+| `0014-OpenRGB.patch` | linux-tkg | `_openrgb=yes` |
+| `0006-add-acs-overrides_iommu.patch` | linux-tkg | `_acs_override=yes` |
+| `dkms-clang.patch` | CachyOS | `_compiler=llvm` |
 
 ## Patch Application Order
 
-PKGBUILD applies patches in this order:
-1. `0001-cachyos-base-all.patch` (always)
-2. `0001-bore-cachy.patch` (if `_cpusched=bore`)
-3. `0003-glitched-base.patch` (if `_zenify=yes`)
-4. `0006-add-acs-overrides_iommu.patch` (if `_acs_override=yes`)
-5. `0014-OpenRGB.patch` (if `_openrgb=yes`)
-6. `dkms-clang.patch` (if `_compiler=llvm`)
-
-## Using Local Patches
-
-By default, PKGBUILD downloads patches from upstream sources. To use local patches instead:
-
-```bash
-_use_local_patches=yes makepkg -sf
-```
-
-## Adding Custom Patches
-
-1. Place `.patch` file in this directory
-2. Add to `source=()` in PKGBUILD
-3. Run `updpkgsums` to update checksums
-4. Build with `makepkg -sf`
-
-### Naming Convention
-
-```
-XXXX-category-description.patch
-```
-
-| Range | Category |
-|-------|----------|
-| 0001-0099 | Core/CachyOS patches |
-| 0100-0199 | CPU/Scheduler |
-| 0200-0299 | GPU/Display |
-| 0300-0399 | Storage/FS |
-| 0400-0499 | Network |
-| 0500+ | Experimental |
-
-## Updating Patches
-
-To refresh patches from upstream:
-
-```bash
-# CachyOS patches
-curl -LO "https://raw.githubusercontent.com/cachyos/kernel-patches/master/6.19/all/0001-cachyos-base-all.patch"
-curl -LO "https://raw.githubusercontent.com/cachyos/kernel-patches/master/6.19/sched/0001-bore-cachy.patch"
-
-# linux-tkg patches
-curl -LO "https://raw.githubusercontent.com/Frogging-Family/linux-tkg/master/linux-tkg-patches/6.19/0003-glitched-base.patch"
-```
+PKGBUILD applies patches in source order:
+1. BORE or GHOST scheduler (depending on `_cpusched`)
+2. Zenify gaming patches (if `_zenify=yes`)
+3. Zen5 MZEN5 Kconfig patch
+4. Misc TKG additions
+5. OpenRGB (if `_openrgb=yes`)
+6. ACS Override (if `_acs_override=yes`)
+7. DKMS clang fix (if `_compiler=llvm`)
 
 ## References
 

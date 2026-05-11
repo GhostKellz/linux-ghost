@@ -70,7 +70,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: kernel-config-${{ steps.version.outputs.version }}
-          path: src/linux-*/.config
+          path: src/cachyos-*/.config
           if-no-files-found: ignore
 
   release:
@@ -108,19 +108,21 @@ jobs:
           ## Linux Ghost Kernel ${{ steps.version.outputs.version }}
 
           ### Features
-          - **GHOST Scheduler** - Gaming-Hybrid Optimized Scheduler Technology
+          - **GHOST Scheduler v2** - Gaming-Hybrid Optimized Scheduler Technology
           - **AMD Zen5/X3D** - Optimized for Ryzen 9000 series and X3D processors
           - **V-Cache aware** - Routes gaming tasks to V-Cache CCD
           - **sched-ext** - Support for BPF schedulers (scx_lavd, scx_bpfland, etc.)
-          - **Full LTO** - Link-time optimization for maximum performance
+          - **PREEMPT_LAZY** - New hybrid preemption model (Linux 6.13+)
+          - **Full LTO** - Link-time optimization with -O3
           - **1000Hz tick** - Low latency for gaming
+          - **Zenify** - Gaming-focused VM/scheduler/block layer tuning
 
           ### Build Configuration
-          - Compiler: LLVM/Clang with Full LTO
-          - CPU: Native optimizations
-          - Scheduler: GHOST on EEVDF
+          - Compiler: LLVM/Clang with Full LTO (-O3)
+          - CPU: Native optimizations (znver5 for Zen5)
+          - Scheduler: GHOST v2 on EEVDF
           - Tick rate: 1000Hz
-          - Preemption: Full (low-latency)
+          - Preemption: PREEMPT_LAZY (hybrid)
 
           ### Installation
           ```bash

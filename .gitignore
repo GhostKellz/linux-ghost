@@ -1,12 +1,13 @@
 # Reference archives (not for distribution)
 archive/
-
+tasks/
 # Build artifacts
 src/
 pkg/
 *.pkg.tar.*
 *.log
 *.src.tar.*
+*.tar.gz
 
 # Generated configs
 config-*-*

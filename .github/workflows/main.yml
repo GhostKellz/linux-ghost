@@ -5,8 +5,9 @@ on:
     branches: [main, master]
     paths:
       - 'PKGBUILD'
+      - '*.patch'
       - 'config/**'
-      - 'patches/**'
+      - 'kernel.fragment'
       - '.github/workflows/**'
   pull_request:
     branches: [main, master]
@@ -42,7 +43,7 @@ jobs:
 
       - name: Verify patches applied
         run: |
-          cd src/linux-*/
+          cd src/cachyos-*/
           echo "=== Applied Patches ==="
           if [[ -f .patches_applied ]]; then
             cat .patches_applied
@@ -57,7 +58,7 @@ jobs:
 
       - name: Compile kernel (vmlinux + modules_prepare)
         run: |
-          cd src/linux-*/
+          cd src/cachyos-*/
           echo "=== Starting compile test ==="
           make olddefconfig
           make -j$(nproc) vmlinux
@@ -69,7 +70,7 @@ jobs:
         if: always()
         with:
           name: kernel-config-${{ github.sha }}
-          path: src/linux-*/.config
+          path: src/cachyos-*/.config
           if-no-files-found: ignore
           retention-days: 7
 

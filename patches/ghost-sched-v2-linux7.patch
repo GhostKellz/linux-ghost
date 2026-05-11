@@ -1,0 +1,1270 @@
+diff --git a/include/linux/sched.h b/include/linux/sched.h
+index abc1234..def5678 100644
+--- a/include/linux/sched.h
++++ b/include/linux/sched.h
+@@ -817,6 +817,53 @@ struct kmap_ctrl {
+ #endif
+ };
+
++#ifdef CONFIG_SCHED_GHOST
++#define GHOST_BC_TIMESTAMP_SHIFT 16
++
++enum ghost_task_class {
++	GHOST_CLASS_DEFAULT = 0,
++	GHOST_CLASS_AUDIO,
++	GHOST_CLASS_INPUT,
++	GHOST_CLASS_COMPOSITOR,
++	GHOST_CLASS_GAMING,
++	GHOST_CLASS_WINESERVER,
++	GHOST_CLASS_NETWORK,
++	GHOST_CLASS_BATCH,
++	GHOST_CLASS_MAX,
++};
++
++struct ghost_bc {
++	union {
++		struct {
++			u64		timestamp:	48;
++			u64		penalty:	16;
++		};
++		u64			value;
++	};
++};
++
++struct ghost_ctx {
++	u64				burst_time;
++	u16				prev_penalty;
++	u16				curr_penalty;
++	union {
++		u16			penalty;
++		struct {
++			u8		_;
++			u8		score;
++		};
++	};
++	bool			stop_update;
++	bool			futex_waiting;
++	struct ghost_bc	subtree;
++	struct ghost_bc	group;
++	u8			task_class;
++	u8			class_boost;
++	bool			is_latency_sensitive;
++	u64			last_classify_time;
++};
++#endif /* CONFIG_SCHED_GHOST */
++
+ struct task_struct {
+ #ifdef CONFIG_THREAD_INFO_IN_TASK
+ 	/*
+@@ -875,6 +922,9 @@ struct task_struct {
+ #ifdef CONFIG_SCHED_CLASS_EXT
+ 	struct sched_ext_entity		scx;
+ #endif
++#ifdef CONFIG_SCHED_GHOST
++	struct ghost_ctx		ghost;
++#endif /* CONFIG_SCHED_GHOST */
+ 	const struct sched_class	*sched_class;
+
+ #ifdef CONFIG_SCHED_CORE
+diff --git a/include/linux/sched/ghost.h b/include/linux/sched/ghost.h
+new file mode 100644
+index 0000000..abc1234
+--- /dev/null
++++ b/include/linux/sched/ghost.h
+@@ -0,0 +1,44 @@
++#ifndef _KERNEL_SCHED_GHOST_H
++#define _KERNEL_SCHED_GHOST_H
++
++#include <linux/sched.h>
++#include <linux/sched/cputime.h>
++#include <linux/atomic.h>
++#include <linux/list.h>
++#include <linux/rcupdate.h>
++#include <linux/jump_label.h>
++
++#define SCHED_GHOST_AUTHOR   "GhostKellz"
++#define SCHED_GHOST_PROGNAME "GHOST CPU Scheduler"
++#define SCHED_GHOST_VERSION  "v2-linux7"
++
++extern u8   __read_mostly sched_ghost;
++DECLARE_STATIC_KEY_TRUE(sched_ghost_key);
++extern u8   __read_mostly sched_burst_inherit_type;
++extern u8   __read_mostly sched_burst_smoothness;
++extern u8   __read_mostly sched_burst_penalty_offset;
++extern uint __read_mostly sched_burst_penalty_scale;
++extern uint __read_mostly sched_burst_cache_lifetime;
++extern u8   __read_mostly sched_ghost_gaming_boost;
++extern u8   __read_mostly sched_ghost_audio_boost;
++extern u8   __read_mostly sched_ghost_compositor_boost;
++extern u8   __read_mostly sched_ghost_input_boost;
++
++extern u8   effective_prio_ghost(struct task_struct *p);
++extern void update_curr_ghost(struct task_struct *p, u64 delta_exec);
++extern void restart_burst_ghost(struct task_struct *p);
++extern void restart_burst_rescale_deadline_ghost(struct task_struct *p);
++extern void task_fork_ghost(struct task_struct *p, struct task_struct *parent,
++						u64 clone_flags, u64 now);
++extern void sched_init_ghost(void);
++extern void reset_task_ghost(struct task_struct *p);
++extern int  sched_ghost_update_handler(const struct ctl_table *table,
++	int write, void __user *buffer, size_t *lenp, loff_t *ppos);
++extern int  sched_burst_inherit_type_update_handler(const struct ctl_table *table,
++	int write, void __user *buffer, size_t *lenp, loff_t *ppos);
++extern const char *ghost_task_class_name(struct task_struct *p);
++
++extern void reweight_entity(
++	struct cfs_rq *cfs_rq, struct sched_entity *se, unsigned long weight);
++
++#endif /* _KERNEL_SCHED_GHOST_H */
+diff --git a/init/Kconfig b/init/Kconfig
+index abc1234..def5678 100644
+--- a/init/Kconfig
++++ b/init/Kconfig
+@@ -1449,6 +1449,19 @@ config CHECKPOINT_RESTORE
+
+ 	  If unsure, say N here.
+
++config SCHED_GHOST
++	bool "GHOST Scheduler (Gaming-Hybrid Optimized Scheduler Technology)"
++	help
++	  GHOST builds on the EEVDF idea but adds task-class aware
++	  boosting for desktop and gaming workloads such as audio,
++	  compositors, input threads and games.
++
++	  It is intended for low-latency desktop systems and Zen4/Zen5
++	  gaming workloads where responsiveness matters more than perfectly
++	  neutral throughput behaviour.
++
++	  If unsure, say N here.
++
+ config SCHED_AUTOGROUP
+ 	bool "Automatic process group scheduling"
+ 	select CGROUPS
+diff --git a/kernel/exit.c b/kernel/exit.c
+index abc1234..def5678 100644
+--- a/kernel/exit.c
++++ b/kernel/exit.c
+@@ -147,7 +147,11 @@ static void __unhash_process(struct release_task_post *post, struct task_struct
+ 		detach_pid(post->pids, p, PIDTYPE_SID);
+
+ 		list_del_rcu(&p->tasks);
++#ifdef CONFIG_SCHED_GHOST
++		list_del_rcu(&p->sibling);
++#else
+ 		list_del_init(&p->sibling);
++#endif /* CONFIG_SCHED_GHOST */
+ 		__this_cpu_dec(process_counts);
+ 	}
+ 	list_del_rcu(&p->thread_node);
+diff --git a/kernel/fork.c b/kernel/fork.c
+index abc1234..def5678 100644
+--- a/kernel/fork.c
++++ b/kernel/fork.c
+@@ -118,6 +118,10 @@
+
+ #include <trace/events/sched.h>
+
++#ifdef CONFIG_SCHED_GHOST
++#include <linux/sched/ghost.h>
++#endif /* CONFIG_SCHED_GHOST */
++
+ #define CREATE_TRACE_POINTS
+ #include <trace/events/task.h>
+
+@@ -2373,6 +2377,11 @@ __latent_entropy struct task_struct *copy_process(
+ 	p->start_time = ktime_get_ns();
+ 	p->start_boottime = ktime_get_boottime_ns();
+
++#ifdef CONFIG_SCHED_GHOST
++	if (likely(p->pid))
++		task_fork_ghost(p, current, clone_flags, p->start_time);
++#endif /* CONFIG_SCHED_GHOST */
++
+ 	/*
+ 	 * Make it visible to the rest of the system, but dont wake it up yet.
+ 	 * Need tasklist lock for parent etc handling!
+@@ -2455,7 +2464,11 @@ __latent_entropy struct task_struct *copy_process(
+ 			 */
+ 			p->signal->has_child_subreaper = p->real_parent->signal->has_child_subreaper ||
+ 							 p->real_parent->signal->is_child_subreaper;
++#ifdef CONFIG_SCHED_GHOST
++			list_add_tail_rcu(&p->sibling, &p->real_parent->children);
++#else
+ 			list_add_tail(&p->sibling, &p->real_parent->children);
++#endif /* CONFIG_SCHED_GHOST */
+ 			list_add_tail_rcu(&p->tasks, &init_task.tasks);
+ 		attach_pid(p, PIDTYPE_TGID);
+ 		attach_pid(p, PIDTYPE_PGID);
+diff --git a/kernel/futex/waitwake.c b/kernel/futex/waitwake.c
+index abc1234..def5678 100644
+--- a/kernel/futex/waitwake.c
++++ b/kernel/futex/waitwake.c
+@@ -5,6 +5,10 @@
+ #include <linux/sched/signal.h>
+ #include <linux/freezer.h>
+
++#ifdef CONFIG_SCHED_GHOST
++#include <linux/sched/ghost.h>
++#endif /* CONFIG_SCHED_GHOST */
++
+ #include "futex.h"
+
+ /*
+@@ -354,7 +358,15 @@ void futex_do_wait(struct futex_q *q, struct hrtimer_sleeper *timeout)
+ 		 * is no timeout, or if it has yet to expire.
+ 		 */
+ 		if (!timeout || timeout->task)
++#ifdef CONFIG_SCHED_GHOST
++		{
++			current->ghost.futex_waiting = true;
+ 			schedule();
++			current->ghost.futex_waiting = false;
++		}
++#else
++			schedule();
++#endif /* CONFIG_SCHED_GHOST */
+ 	}
+ 	__set_current_state(TASK_RUNNING);
+ }
+diff --git a/kernel/sched/Makefile b/kernel/sched/Makefile
+index abc1234..def5678 100644
+--- a/kernel/sched/Makefile
++++ b/kernel/sched/Makefile
+@@ -40,3 +40,4 @@ obj-y += core.o
+ obj-y += fair.o
+ obj-y += build_policy.o
+ obj-y += build_utility.o
++obj-$(CONFIG_SCHED_GHOST) += ghost.o
+diff --git a/kernel/sched/core.c b/kernel/sched/core.c
+index abc1234..def5678 100644
+--- a/kernel/sched/core.c
++++ b/kernel/sched/core.c
+@@ -95,6 +95,10 @@
+ #include "pelt.h"
+ #include "smp.h"
+
++#ifdef CONFIG_SCHED_GHOST
++#include <linux/sched/ghost.h>
++#endif /* CONFIG_SCHED_GHOST */
++
+ #include "../workqueue_internal.h"
+ #include "../../io_uring/io-wq.h"
+ #include "../smpboot.h"
+@@ -1438,7 +1442,11 @@ int tg_nop(struct task_group *tg, void *data)
+
+ void set_load_weight(struct task_struct *p, bool update_load)
+ {
++#ifdef CONFIG_SCHED_GHOST
++	int prio = effective_prio_ghost(p);
++#else
+ 	int prio = p->static_prio - MAX_RT_PRIO;
++#endif /* CONFIG_SCHED_GHOST */
+ 	struct load_weight lw;
+
+ 	if (task_has_idle_policy(p)) {
+@@ -8783,6 +8791,10 @@ void __init sched_init(void)
+
+ 	psi_init();
+
++#ifdef CONFIG_SCHED_GHOST
++	sched_init_ghost();
++#endif /* CONFIG_SCHED_GHOST */
++
+ 	init_uclamp();
+
+ 	preempt_dynamic_init();
+diff --git a/kernel/sched/debug.c b/kernel/sched/debug.c
+index abc1234..def5678 100644
+--- a/kernel/sched/debug.c
++++ b/kernel/sched/debug.c
+@@ -273,6 +273,55 @@ static const struct file_operations sched_dynamic_fops = {
+
+ #endif /* CONFIG_PREEMPT_DYNAMIC */
+
++#ifdef CONFIG_SCHED_GHOST
++#include <linux/sched/ghost.h>
++#define DEFINE_SYSCTL_SCHED_FUNC_GHOST(name, update_func) \
++static ssize_t sched_##name##_write(struct file *filp, const char __user *ubuf, size_t cnt, loff_t *ppos) \
++{ \
++	char buf[16]; \
++	unsigned int value; \
++\
++	if (cnt > 15) \
++		cnt = 15; \
++\
++	if (copy_from_user(&buf, ubuf, cnt)) \
++		return -EFAULT; \
++	buf[cnt] = '\0'; \
++\
++	if (kstrtouint(buf, 10, &value)) \
++		return -EINVAL; \
++\
++	sysctl_sched_##name = value; \
++	sched_update_##update_func(); \
++\
++	*ppos += cnt; \
++	return cnt; \
++} \
++\
++static int sched_##name##_show(struct seq_file *m, void *v) \
++{ \
++	seq_printf(m, "%d\n", sysctl_sched_##name); \
++	return 0; \
++} \
++\
++static int sched_##name##_open(struct inode *inode, struct file *filp) \
++{ \
++	return single_open(filp, sched_##name##_show, NULL); \
++} \
++\
++static const struct file_operations sched_##name##_fops = { \
++	.open		= sched_##name##_open, \
++	.write		= sched_##name##_write, \
++	.read		= seq_read, \
++	.llseek		= seq_lseek, \
++	.release	= single_release, \
++};
++
++DEFINE_SYSCTL_SCHED_FUNC_GHOST(min_base_slice, min_base_slice)
++
++#undef DEFINE_SYSCTL_SCHED_FUNC_GHOST
++#endif /* CONFIG_SCHED_GHOST */
++
+ __read_mostly bool sched_debug_verbose;
+
+ static struct dentry           *sd_dentry;
+@@ -601,8 +650,13 @@ static __init int sched_init_debug(void)
+ #ifdef CONFIG_PREEMPT_DYNAMIC
+ 	debugfs_create_file("preempt", 0644, debugfs_sched, NULL, &sched_dynamic_fops);
+ #endif
+
++#ifdef CONFIG_SCHED_GHOST
++	debugfs_create_file("min_base_slice_ns", 0644, debugfs_sched, NULL, &sched_min_base_slice_fops);
++	debugfs_create_u32("base_slice_ns", 0444, debugfs_sched, &sysctl_sched_base_slice);
++#else
+ 	debugfs_create_u32("base_slice_ns", 0644, debugfs_sched, &sysctl_sched_base_slice);
++#endif /* CONFIG_SCHED_GHOST */
+
+ 	debugfs_create_u32("latency_warn_ms", 0644, debugfs_sched, &sysctl_resched_latency_warn_ms);
+ 	debugfs_create_u32("latency_warn_once", 0644, debugfs_sched, &sysctl_resched_latency_warn_once);
+@@ -850,6 +905,12 @@ print_task(struct seq_file *m, struct rq *rq, struct task_struct *p)
+ 		SPLIT_NS(schedstat_val_or_zero(p->stats.sum_sleep_runtime)),
+ 		SPLIT_NS(schedstat_val_or_zero(p->stats.sum_block_runtime)));
+
++#ifdef CONFIG_SCHED_GHOST
++	SEQ_printf(m, " %2d", p->ghost.score);
++	if (sched_debug_verbose)
++		SEQ_printf(m, " ghost_class=%s boost=%u",
++			ghost_task_class_name(p), p->ghost.class_boost);
++#endif /* CONFIG_SCHED_GHOST */
+ #ifdef CONFIG_NUMA_BALANCING
+ 	SEQ_printf(m, "   %d      %d", task_node(p), task_numa_group_id(p));
+ #endif
+@@ -1355,6 +1415,9 @@ void proc_sched_show_task(struct task_struct *p, struct pid_namespace *ns,
+ #ifdef CONFIG_SCHED_CLASS_EXT
+ 	__PS("ext.enabled", task_on_scx(p));
+ #endif
++#ifdef CONFIG_SCHED_GHOST
++	P(ghost.score);
++#endif /* CONFIG_SCHED_GHOST */
+ #undef PN_SCHEDSTAT
+ #undef P_SCHEDSTAT
+
+diff --git a/kernel/sched/fair.c b/kernel/sched/fair.c
+index abc1234..def5678 100644
+--- a/kernel/sched/fair.c
++++ b/kernel/sched/fair.c
+@@ -57,6 +57,10 @@
+ #include "sched.h"
+ #include "stats.h"
+ #include "autogroup.h"
++
++#ifdef CONFIG_SCHED_GHOST
++#include <linux/sched/ghost.h>
++#endif /* CONFIG_SCHED_GHOST */
+
+ /*
+  * The initial- and re-scaling of tunables is configurable
+@@ -69,7 +73,11 @@
+  *
+  * (default SCHED_TUNABLESCALING_LOG = *(1+ilog(ncpus))
+  */
++#ifdef CONFIG_SCHED_GHOST
++unsigned int sysctl_sched_tunable_scaling = SCHED_TUNABLESCALING_NONE;
++#else
+ unsigned int sysctl_sched_tunable_scaling = SCHED_TUNABLESCALING_LOG;
++#endif /* CONFIG_SCHED_GHOST */
+
+ /*
+  * Minimal preemption granularity for CPU-bound tasks:
+@@ -77,10 +85,22 @@ unsigned int sysctl_sched_tunable_scaling = SCHED_TUNABLESCALING_LOG;
+  * (default: 0.70 msec * (1 + ilog(ncpus)), units: nanoseconds)
+  */
+ #ifdef CONFIG_CACHY
++#ifdef CONFIG_SCHED_GHOST
++static const unsigned int nsecs_per_tick       = 1000000000ULL / HZ;
++unsigned int sysctl_sched_min_base_slice       = 400000ULL;
++__read_mostly uint sysctl_sched_base_slice     = 400000ULL;
++#else
+ unsigned int sysctl_sched_base_slice			= 400000ULL;
++#endif /* CONFIG_SCHED_GHOST */
+ static unsigned int normalized_sysctl_sched_base_slice	= 400000ULL;
+ #else
++#ifdef CONFIG_SCHED_GHOST
++static const unsigned int nsecs_per_tick       = 1000000000ULL / HZ;
++unsigned int sysctl_sched_min_base_slice       = 700000ULL;
++__read_mostly uint sysctl_sched_base_slice     = 700000ULL;
++#else
+ unsigned int sysctl_sched_base_slice			= 700000ULL;
++#endif /* CONFIG_SCHED_GHOST */
+ static unsigned int normalized_sysctl_sched_base_slice	= 700000ULL;
+ #endif /* CONFIG_CACHY */
+
+@@ -218,6 +238,14 @@ static unsigned int get_update_sysctl_factor(void)
+ 	return factor;
+ }
+
++#ifdef CONFIG_SCHED_GHOST
++void sched_update_min_base_slice(void)
++{
++	sysctl_sched_base_slice = nsecs_per_tick *
++		max(1UL, DIV_ROUND_UP(sysctl_sched_min_base_slice, nsecs_per_tick));
++}
++#endif /* CONFIG_SCHED_GHOST */
++
+ static void update_sysctl(void)
+ {
+ 	unsigned int factor = get_update_sysctl_factor();
+@@ -1043,8 +1071,18 @@ static struct sched_entity *__pick_eevdf(struct cfs_rq *cfs_rq, bool protect)
+ 	if (curr && !curr->on_rq)
+ 		curr = NULL;
+
+-	if (curr && protect && protect_slice(curr))
++#ifdef CONFIG_SCHED_GHOST
++	if (curr && protect && protect_slice(curr)) {
++		if (!static_branch_likely(&sched_ghost_key) ||
++		    !entity_is_task(curr) ||
++		    !task_of(curr)->ghost.futex_waiting)
++			return curr;
++	}
++#else
++	if (curr && protect && protect_slice(curr)) {
+ 		return curr;
++	}
++#endif /* CONFIG_SCHED_GHOST */
+
+ 	/* Pick the leftmost entity if it's eligible */
+ 	if (se && entity_eligible(cfs_rq, se)) {
+@@ -1105,6 +1143,7 @@ struct sched_entity *__pick_last_entity(struct cfs_rq *cfs_rq)
+ /**************************************************************
+  * Scheduling class statistics methods:
+  */
++#ifndef CONFIG_SCHED_GHOST
+ int sched_update_scaling(void)
+ {
+ 	unsigned int factor = get_update_sysctl_factor();
+@@ -1116,6 +1155,7 @@ int sched_update_scaling(void)
+
+ 	return 0;
+ }
++#endif /* !CONFIG_SCHED_GHOST */
+
+ static void clear_buddies(struct cfs_rq *cfs_rq, struct sched_entity *se);
+
+@@ -1316,6 +1356,10 @@ static void update_curr(struct cfs_rq *cfs_rq)
+ 	resched = update_deadline(cfs_rq, curr);
+
+ 	if (entity_is_task(curr)) {
++#ifdef CONFIG_SCHED_GHOST
++		struct task_struct *p = task_of(curr);
++		update_curr_ghost(p, delta_exec);
++#endif /* CONFIG_SCHED_GHOST */
+ 		/*
+ 		 * If the fair_server is active, we need to account for the
+ 		 * fair_server time whether or not the task is running on
+@@ -5176,6 +5220,14 @@ place_entity(struct cfs_rq *cfs_rq, struct sched_entity *se, int flags)
+ 	u64 vslice, vruntime = avg_vruntime(cfs_rq);
+ 	s64 lag = 0;
+
++#ifdef CONFIG_SCHED_GHOST
++	if (static_branch_likely(&sched_ghost_key) &&
++	    entity_is_task(se) &&
++	    task_of(se)->ghost.futex_waiting) {
++		/* Skip vslice calculation for futex waiters */
++	} else
++#endif /* CONFIG_SCHED_GHOST */
++	{
+ 	if (!se->custom_slice)
+ 		se->slice = sysctl_sched_base_slice;
+ 	vslice = calc_delta_fair(se->slice, se);
+@@ -5257,6 +5309,7 @@ place_entity(struct cfs_rq *cfs_rq, struct sched_entity *se, int flags)
+ 	}
+
+ 	se->vruntime = vruntime - lag;
++	}
+
+ 	if (se->rel_deadline) {
+ 		se->deadline += se->vruntime;
+@@ -5270,6 +5323,11 @@ place_entity(struct cfs_rq *cfs_rq, struct sched_entity *se, int flags)
+ 	if (sched_feat(PLACE_DEADLINE_INITIAL) && (flags & ENQUEUE_INITIAL))
+ 		vslice /= 2;
+
++#ifdef CONFIG_SCHED_GHOST
++	if (static_branch_likely(&sched_ghost_key))
++		vslice >>= !!(flags & (ENQUEUE_INITIAL | ENQUEUE_WAKEUP));
++#endif /* CONFIG_SCHED_GHOST */
++
+ 	/*
+ 	 * EEVDF: vd_i = ve_i + r_i/w_i
+ 	 */
+@@ -5522,6 +5580,10 @@ dequeue_entity(struct cfs_rq *cfs_rq, struct sched_entity *se, int flags)
+
+ 		if (sched_feat(DELAY_DEQUEUE) && delay &&
+ 		    !entity_eligible(cfs_rq, se)) {
++#ifdef CONFIG_SCHED_GHOST
++			if (static_branch_likely(&sched_ghost_key) && sched_feat(DELAY_ZERO))
++				update_entity_lag(cfs_rq, se);
++#endif /* CONFIG_SCHED_GHOST */
+ 			update_load_avg(cfs_rq, se, 0);
+ 			set_delayed(se);
+ 			return false;
+@@ -6924,10 +6986,13 @@ requeue_delayed_entity(struct sched_entity *se)
+ 	WARN_ON_ONCE(!se->on_rq);
+
+ 	if (sched_feat(DELAY_ZERO)) {
++#ifdef CONFIG_SCHED_GHOST
++		if (!static_branch_likely(&sched_ghost_key))
++#endif /* CONFIG_SCHED_GHOST */
+ 		update_entity_lag(cfs_rq, se);
+ 		if (se->vlag > 0) {
+ 			cfs_rq->nr_queued--;
+ 			if (se != cfs_rq->curr)
+ 				__dequeue_entity(cfs_rq, se);
+ 			se->vlag = 0;
+ 			place_entity(cfs_rq, se, 0);
+@@ -7187,6 +7253,18 @@ static bool dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
+ 		return true;
+ 	}
+
++#ifdef CONFIG_SCHED_GHOST
++	{
++		struct cfs_rq *cfs_rq = cfs_rq_of(&p->se);
++		struct sched_entity *se = &p->se;
++		if ((flags & DEQUEUE_SLEEP) && entity_is_task(se)) {
++			if (cfs_rq->curr == se)
++				update_curr(cfs_rq);
++			restart_burst_ghost(p);
++		}
++	}
++#endif /* CONFIG_SCHED_GHOST */
++
+ 	if (!p->se.sched_delayed)
+ 		util_est_dequeue(&rq->cfs, p);
+
+@@ -9220,6 +9300,10 @@ static void yield_task_fair(struct rq *rq)
+ 	 * Update run-time statistics of the 'current'.
+ 	 */
+ 	update_curr(cfs_rq);
++#ifdef CONFIG_SCHED_GHOST
++	restart_burst_rescale_deadline_ghost(curr);
++#endif /* CONFIG_SCHED_GHOST */
++
+ 	/*
+ 	 * Tell update_rq_clock() that we've just updated,
+ 	 * so we don't do microscopic update in schedule()
+@@ -13668,6 +13752,10 @@ static void switched_to_fair(struct rq *rq, struct task_struct *p)
+
+ 	attach_task_cfs_rq(p);
+
++#ifdef CONFIG_SCHED_GHOST
++	reset_task_ghost(p);
++#endif /* CONFIG_SCHED_GHOST */
++
+ 	set_task_max_allowed_capacity(p);
+
+ 	if (task_on_rq_queued(p)) {
+diff --git a/kernel/sched/ghost.c b/kernel/sched/ghost.c
+new file mode 100644
+index 0000000..abc1234
+--- /dev/null
++++ b/kernel/sched/ghost.c
+@@ -0,0 +1,653 @@
++/*
++ *  GHOST CPU Scheduler v2 for Linux 7 / CachyOS base
++ *  Copyright (C) 2025-2026 GhostKellz
++ */
++#include <linux/cpuset.h>
++#include <linux/string.h>
++#include <linux/sched/task.h>
++#include <linux/sched/ghost.h>
++#include "sched.h"
++
++#ifdef CONFIG_SCHED_GHOST
++DEFINE_STATIC_KEY_TRUE(sched_ghost_key);
++u8   __read_mostly sched_ghost                    = 1;
++u8   __read_mostly sched_burst_inherit_type       = 2;
++u8   __read_mostly sched_burst_smoothness         = 1;
++u8   __read_mostly sched_burst_penalty_offset     = 24;
++uint __read_mostly sched_burst_penalty_scale      = 1536;
++uint __read_mostly sched_burst_cache_lifetime     = 75000000;
++u8   __read_mostly sched_ghost_gaming_boost       = 8;
++u8   __read_mostly sched_ghost_audio_boost        = 12;
++u8   __read_mostly sched_ghost_compositor_boost   = 10;
++u8   __read_mostly sched_ghost_input_boost        = 10;
++static int __maybe_unused maxval_prio    =   39;
++static int __maybe_unused maxval_6_bits  =   63;
++static int __maybe_unused maxval_8_bits  =  255;
++static int __maybe_unused maxval_12_bits = 4095;
++
++#define MAX_BURST_PENALTY ((40U << 8) - 1)
++#define BURST_CACHE_SAMPLE_LIMIT 63
++#define BURST_CACHE_SCAN_LIMIT (BURST_CACHE_SAMPLE_LIMIT * 2)
++#define GHOST_CLASSIFY_INTERVAL (100 * NSEC_PER_MSEC)
++
++static u32 ghost_reciprocal_lut[BURST_CACHE_SAMPLE_LIMIT + 1];
++
++DEFINE_STATIC_KEY_TRUE(sched_burst_inherit_key);
++DEFINE_STATIC_KEY_TRUE(sched_burst_ancestor_key);
++
++static const char * const audio_patterns[] = {
++	"pipewire", "pw-", "pulseaudio", "jack", "alsa", NULL,
++};
++
++static const char * const input_patterns[] = {
++	"evdev", "libinput", "input-", NULL,
++};
++
++static const char * const compositor_patterns[] = {
++	"sway", "mutter", "gnome-shell", "kwin", "hyprland", "Xwayland", "gamescope", NULL,
++};
++
++static const char * const gaming_patterns[] = {
++	"steam", "proton", "wine", "wine64", "lutris", "heroic", ".exe", NULL,
++};
++
++static const char * const wineserver_patterns[] = {
++	"wineserver", "wineserver64", NULL,
++};
++
++static const char * const network_patterns[] = {
++	"NetworkManager", "wpa_supplicant", "systemd-resolved", NULL,
++};
++
++static const char * const batch_patterns[] = {
++	"make", "ninja", "gcc", "g++", "clang", "rustc", "cargo", "ld", NULL,
++};
++
++static bool match_pattern(const char *str, const char * const *patterns)
++{
++	const char *pattern;
++	int i;
++
++	if (!str)
++		return false;
++
++	for (i = 0; (pattern = patterns[i]) != NULL; i++) {
++		if (strstr(str, pattern))
++			return true;
++	}
++
++	return false;
++}
++
++static inline u32 log2p1_u64_u32fp(u64 v, u8 fp)
++{
++	if (unlikely(!v))
++		return 0;
++
++	return (fls64(v) << fp) |
++		(u32)((v << (64 - fls64(v))) << 1 >> (64 - fp));
++}
++
++static void ghost_classify_task(struct task_struct *p)
++{
++	struct ghost_ctx *ctx = &p->ghost;
++	char comm[TASK_COMM_LEN];
++	u64 now = ktime_get_ns();
++
++	if (ctx->last_classify_time &&
++	    now - ctx->last_classify_time < GHOST_CLASSIFY_INTERVAL)
++		return;
++
++	ctx->last_classify_time = now;
++	ctx->task_class = GHOST_CLASS_DEFAULT;
++	ctx->class_boost = 0;
++	ctx->is_latency_sensitive = false;
++
++	get_task_comm(comm, p);
++
++	if (match_pattern(comm, wineserver_patterns)) {
++		ctx->task_class = GHOST_CLASS_WINESERVER;
++		ctx->class_boost = sched_ghost_gaming_boost + 4;
++		ctx->is_latency_sensitive = true;
++		return;
++	}
++
++	if (match_pattern(comm, audio_patterns)) {
++		ctx->task_class = GHOST_CLASS_AUDIO;
++		ctx->class_boost = sched_ghost_audio_boost;
++		ctx->is_latency_sensitive = true;
++		return;
++	}
++
++	if (match_pattern(comm, input_patterns)) {
++		ctx->task_class = GHOST_CLASS_INPUT;
++		ctx->class_boost = sched_ghost_input_boost;
++		ctx->is_latency_sensitive = true;
++		return;
++	}
++
++	if (match_pattern(comm, compositor_patterns)) {
++		ctx->task_class = GHOST_CLASS_COMPOSITOR;
++		ctx->class_boost = sched_ghost_compositor_boost;
++		ctx->is_latency_sensitive = true;
++		return;
++	}
++
++	if (match_pattern(comm, gaming_patterns)) {
++		ctx->task_class = GHOST_CLASS_GAMING;
++		ctx->class_boost = sched_ghost_gaming_boost;
++		ctx->is_latency_sensitive = true;
++		return;
++	}
++
++	if (match_pattern(comm, network_patterns)) {
++		ctx->task_class = GHOST_CLASS_NETWORK;
++		ctx->class_boost = 2;
++		ctx->is_latency_sensitive = true;
++		return;
++	}
++
++	if (match_pattern(comm, batch_patterns))
++		ctx->task_class = GHOST_CLASS_BATCH;
++}
++
++const char *ghost_task_class_name(struct task_struct *p)
++{
++	ghost_classify_task(p);
++
++	switch (p->ghost.task_class) {
++	case GHOST_CLASS_AUDIO:
++		return "audio";
++	case GHOST_CLASS_INPUT:
++		return "input";
++	case GHOST_CLASS_COMPOSITOR:
++		return "compositor";
++	case GHOST_CLASS_GAMING:
++		return "gaming";
++	case GHOST_CLASS_WINESERVER:
++		return "wineserver";
++	case GHOST_CLASS_NETWORK:
++		return "network";
++	case GHOST_CLASS_BATCH:
++		return "batch";
++	default:
++		return "default";
++	}
++}
++
++static inline u32 calc_burst_penalty(struct task_struct *p, u64 burst_time)
++{
++	u32 greed = log2p1_u64_u32fp(burst_time, 8);
++	u32 tolerance = sched_burst_penalty_offset << 8;
++	s32 diff = (s32)(greed - tolerance);
++	u32 penalty = diff & ~(diff >> 31);
++	u32 scaled_penalty = penalty * sched_burst_penalty_scale >> 10;
++	s32 overflow;
++
++	ghost_classify_task(p);
++	if (p->ghost.is_latency_sensitive)
++		scaled_penalty >>= 2;
++
++	overflow = scaled_penalty - MAX_BURST_PENALTY;
++	return scaled_penalty - (overflow & ~(overflow >> 31));
++}
++
++static inline u64 rescale_slice(u64 delta, u8 old_prio, u8 new_prio)
++{
++	u64 unscaled, rescaled;
++
++	unscaled = mul_u64_u32_shr(delta, sched_prio_to_weight[old_prio], 10);
++	rescaled = mul_u64_u32_shr(unscaled, sched_prio_to_wmult[new_prio], 22);
++	return rescaled;
++}
++
++static inline u32 binary_smooth(u32 new, u32 old)
++{
++	u32 is_growing = (new > old);
++	u32 increment = (new - old) * is_growing;
++	u32 shift = sched_burst_smoothness;
++	u32 smoothed = old + ((increment + (1U << shift) - 1) >> shift);
++
++	return (new & ~(-is_growing)) | (smoothed & (-is_growing));
++}
++
++static void reweight_task_by_prio(struct task_struct *p, int prio)
++{
++	struct sched_entity *se = &p->se;
++	unsigned long weight;
++
++	if (task_has_idle_policy(p))
++		return;
++
++	weight = scale_load(sched_prio_to_weight[prio]);
++	if (se->on_rq) {
++		p->ghost.stop_update = true;
++		reweight_entity(cfs_rq_of(se), se, weight);
++		p->ghost.stop_update = false;
++	} else {
++		se->load.weight = weight;
++	}
++	se->load.inv_weight = sched_prio_to_wmult[prio];
++}
++
++u8 effective_prio_ghost(struct task_struct *p)
++{
++	int prio = p->static_prio - MAX_RT_PRIO;
++
++	ghost_classify_task(p);
++	if (static_branch_likely(&sched_ghost_key)) {
++		prio += p->ghost.score;
++		prio -= p->ghost.class_boost;
++	}
++	prio &= ~(prio >> 31);
++	prio = min(prio, maxval_prio);
++	return (u8)prio;
++}
++
++static void update_penalty(struct task_struct *p)
++{
++	struct ghost_ctx *ctx = &p->ghost;
++	u8 prev_prio = effective_prio_ghost(p);
++	s32 diff = (s32)ctx->curr_penalty - (s32)ctx->prev_penalty;
++	u16 max_val = ctx->curr_penalty - (diff & (diff >> 31));
++	u32 is_kthread = !!(p->flags & PF_KTHREAD);
++	u8 new_prio;
++
++	ctx->penalty = max_val & -(s32)(!is_kthread);
++	new_prio = effective_prio_ghost(p);
++	if (new_prio != prev_prio)
++		reweight_task_by_prio(p, new_prio);
++}
++
++void update_curr_ghost(struct task_struct *p, u64 delta_exec)
++{
++	struct ghost_ctx *ctx = &p->ghost;
++	u32 curr_penalty;
++
++	if (ctx->stop_update)
++		return;
++
++	ctx->burst_time += delta_exec;
++	curr_penalty = ctx->curr_penalty = calc_burst_penalty(p, ctx->burst_time);
++	if (curr_penalty <= ctx->prev_penalty)
++		return;
++	update_penalty(p);
++}
++
++void restart_burst_ghost(struct task_struct *p)
++{
++	struct ghost_ctx *ctx = &p->ghost;
++	u32 new_penalty = binary_smooth(ctx->curr_penalty, ctx->prev_penalty);
++
++	ctx->prev_penalty = new_penalty;
++	ctx->curr_penalty = 0;
++	ctx->burst_time = 0;
++	update_penalty(p);
++}
++
++void restart_burst_rescale_deadline_ghost(struct task_struct *p)
++{
++	struct sched_entity *se = &p->se;
++	s64 vscaled, vremain = se->deadline - se->vruntime;
++	u8 old_prio = effective_prio_ghost(p);
++	u8 new_prio;
++
++	restart_burst_ghost(p);
++	new_prio = effective_prio_ghost(p);
++	if (old_prio > new_prio) {
++		vscaled = rescale_slice(abs(vremain), old_prio, new_prio);
++		if (unlikely(vremain < 0))
++			vscaled = -vscaled;
++		se->deadline = se->vruntime + vscaled;
++	}
++}
++
++static inline bool task_is_ghost_eligible(struct task_struct *p)
++{
++	return p && p->sched_class == &fair_sched_class && !p->exit_state;
++}
++
++#ifndef for_each_child_task
++#define for_each_child_task(p, t) \
++	list_for_each_entry_rcu(t, &(p)->children, sibling)
++#endif
++
++static inline u32 count_children_upto2(struct task_struct *p)
++{
++	struct list_head *head = &p->children;
++	struct list_head *next = head->next;
++
++	return (next != head) + (next->next != head);
++}
++
++static inline bool burst_cache_expired(struct ghost_bc *bc, u64 now)
++{
++	struct ghost_bc bc_val = { .value = READ_ONCE(bc->value) };
++	u64 timestamp = (u64)bc_val.timestamp << GHOST_BC_TIMESTAMP_SHIFT;
++
++	return now - timestamp > (u64)sched_burst_cache_lifetime;
++}
++
++static void update_burst_cache(struct ghost_bc *bc,
++		struct task_struct *p, u32 count, u32 total, u64 now)
++{
++	u32 average = (count == 1) ? total :
++		(u32)(((u64)total * ghost_reciprocal_lut[count]) >> 32);
++	struct ghost_bc new_bc = {
++		.penalty = max(average, p->ghost.penalty),
++		.timestamp = now >> GHOST_BC_TIMESTAMP_SHIFT,
++	};
++
++	WRITE_ONCE(bc->value, new_bc.value);
++}
++
++static u32 inherit_from_parent(struct task_struct *parent,
++				      u64 clone_flags, u64 now)
++{
++	struct ghost_bc bc_val;
++	struct ghost_bc *bc;
++	struct task_struct *child;
++	u32 count = 0, total = 0, scan_count = 0;
++
++	if (clone_flags & CLONE_PARENT)
++		parent = rcu_dereference(parent->real_parent);
++
++	bc = &parent->ghost.subtree;
++	if (burst_cache_expired(bc, now)) {
++		for_each_child_task(parent, child) {
++			if (count >= BURST_CACHE_SAMPLE_LIMIT ||
++			    scan_count++ >= BURST_CACHE_SCAN_LIMIT)
++				break;
++			if (!task_is_ghost_eligible(child))
++				continue;
++			count++;
++			total += child->ghost.penalty;
++		}
++		update_burst_cache(bc, parent, count, total, now);
++	}
++
++	bc_val.value = READ_ONCE(bc->value);
++	return (u32)bc_val.penalty;
++}
++
++static u32 inherit_from_ancestor_hub(struct task_struct *parent,
++					   u64 clone_flags, u64 now)
++{
++	struct ghost_bc bc_val;
++	struct task_struct *ancestor = parent;
++	u32 sole_child_count = 0;
++
++	if (clone_flags & CLONE_PARENT) {
++		ancestor = rcu_dereference(ancestor->real_parent);
++		sole_child_count = 1;
++	}
++
++	for (struct task_struct *next;
++	     (next = rcu_dereference(ancestor->real_parent)) != ancestor &&
++	     count_children_upto2(ancestor) <= sole_child_count;
++	     ancestor = next, sole_child_count = 1) {}
++
++	struct ghost_bc *bc = &ancestor->ghost.subtree;
++	if (burst_cache_expired(bc, now)) {
++		struct task_struct *direct_child;
++		u32 count = 0, total = 0, scan_count = 0;
++
++		for_each_child_task(ancestor, direct_child) {
++			struct task_struct *descendant = direct_child;
++
++			if (count >= BURST_CACHE_SAMPLE_LIMIT ||
++			    scan_count++ >= BURST_CACHE_SCAN_LIMIT)
++				break;
++			while (count_children_upto2(descendant) == 1)
++				descendant = list_first_entry(&descendant->children,
++							    struct task_struct, sibling);
++			if (!task_is_ghost_eligible(descendant))
++				continue;
++			count++;
++			total += descendant->ghost.penalty;
++		}
++		update_burst_cache(bc, ancestor, count, total, now);
++	}
++
++	bc_val.value = READ_ONCE(bc->value);
++	return (u32)bc_val.penalty;
++}
++
++static u32 inherit_from_thread_group(struct task_struct *p, u64 now)
++{
++	struct ghost_bc bc_val;
++	struct task_struct *leader = p->group_leader;
++	struct ghost_bc *bc = &leader->ghost.group;
++	struct task_struct *sibling;
++	u32 count = 0, total = 0;
++
++	if (burst_cache_expired(bc, now)) {
++		for_each_thread(leader, sibling) {
++			if (count >= BURST_CACHE_SAMPLE_LIMIT)
++				break;
++			if (!task_is_ghost_eligible(sibling))
++				continue;
++			count++;
++			total += sibling->ghost.penalty;
++		}
++		update_burst_cache(bc, leader, count, total, now);
++	}
++
++	bc_val.value = READ_ONCE(bc->value);
++	return (u32)bc_val.penalty;
++}
++
++void task_fork_ghost(struct task_struct *p, struct task_struct *parent,
++			     u64 clone_flags, u64 now)
++{
++	struct ghost_ctx *ctx = &p->ghost;
++	u32 inherited_penalty;
++
++	if (!static_branch_likely(&sched_ghost_key) || !task_is_ghost_eligible(p))
++		return;
++
++	rcu_read_lock();
++	if (clone_flags & CLONE_THREAD)
++		inherited_penalty = inherit_from_thread_group(parent, now);
++	else if (static_branch_likely(&sched_burst_inherit_key))
++		inherited_penalty = static_branch_likely(&sched_burst_ancestor_key) ?
++			inherit_from_ancestor_hub(parent, clone_flags, now) :
++			inherit_from_parent(parent, clone_flags, now);
++	else
++		inherited_penalty = 0;
++
++	if (ctx->prev_penalty < inherited_penalty)
++		ctx->prev_penalty = inherited_penalty;
++	ctx->curr_penalty = 0;
++	ctx->burst_time = 0;
++	ctx->stop_update = false;
++	ctx->futex_waiting = false;
++	ctx->task_class = parent->ghost.task_class;
++	ctx->class_boost = parent->ghost.class_boost;
++	ctx->is_latency_sensitive = parent->ghost.is_latency_sensitive;
++	ctx->last_classify_time = 0;
++	update_penalty(p);
++	rcu_read_unlock();
++}
++
++void reset_task_ghost(struct task_struct *p)
++{
++	memset(&p->ghost, 0, sizeof(struct ghost_ctx));
++}
++
++static void update_inherit_type(void)
++{
++	switch (sched_burst_inherit_type) {
++	case 1:
++		static_branch_enable(&sched_burst_inherit_key);
++		static_branch_disable(&sched_burst_ancestor_key);
++		break;
++	case 2:
++		static_branch_enable(&sched_burst_inherit_key);
++		static_branch_enable(&sched_burst_ancestor_key);
++		break;
++	default:
++		static_branch_disable(&sched_burst_inherit_key);
++		break;
++	}
++}
++
++void __init sched_init_ghost(void)
++{
++	pr_info("%s %s by %s\n",
++		SCHED_GHOST_PROGNAME, SCHED_GHOST_VERSION, SCHED_GHOST_AUTHOR);
++
++	for (int i = 1; i <= BURST_CACHE_SAMPLE_LIMIT; i++)
++		ghost_reciprocal_lut[i] = (u32)div64_u64(0xffffffffULL + i, i);
++
++	reset_task_ghost(&init_task);
++	update_inherit_type();
++}
++
++static void readjust_all_task_weights(void)
++{
++	struct task_struct *task;
++	struct rq *rq;
++	struct rq_flags rf;
++
++	scoped_guard(write_lock_irq, &tasklist_lock)
++	for_each_process(task) {
++		if (!task_is_ghost_eligible(task))
++			continue;
++		ghost_classify_task(task);
++		rq = task_rq_lock(task, &rf);
++		update_rq_clock(rq);
++		reweight_task_by_prio(task, effective_prio_ghost(task));
++		task_rq_unlock(rq, task, &rf);
++	}
++}
++
++int sched_ghost_update_handler(const struct ctl_table *table,
++		int write, void __user *buffer, size_t *lenp, loff_t *ppos)
++{
++	int ret = proc_dou8vec_minmax(table, write, buffer, lenp, ppos);
++
++	if (ret || !write)
++		return ret;
++
++	if (sched_ghost)
++		static_branch_enable(&sched_ghost_key);
++	else
++		static_branch_disable(&sched_ghost_key);
++
++	readjust_all_task_weights();
++	return 0;
++}
++
++int sched_burst_inherit_type_update_handler(const struct ctl_table *table,
++		int write, void __user *buffer, size_t *lenp, loff_t *ppos)
++{
++	int ret = proc_dou8vec_minmax(table, write, buffer, lenp, ppos);
++
++	if (ret || !write)
++		return ret;
++
++	update_inherit_type();
++	return 0;
++}
++
++#ifdef CONFIG_SYSCTL
++static struct ctl_table sched_ghost_sysctls[] = {
++	{
++		.procname = "sched_ghost",
++		.data = &sched_ghost,
++		.maxlen = sizeof(u8),
++		.mode = 0644,
++		.proc_handler = sched_ghost_update_handler,
++		.extra1 = SYSCTL_ZERO,
++		.extra2 = SYSCTL_ONE,
++	},
++	{
++		.procname = "sched_burst_inherit_type",
++		.data = &sched_burst_inherit_type,
++		.maxlen = sizeof(u8),
++		.mode = 0644,
++		.proc_handler = sched_burst_inherit_type_update_handler,
++		.extra1 = SYSCTL_ZERO,
++		.extra2 = SYSCTL_TWO,
++	},
++	{
++		.procname = "sched_burst_smoothness",
++		.data = &sched_burst_smoothness,
++		.maxlen = sizeof(u8),
++		.mode = 0644,
++		.proc_handler = proc_dou8vec_minmax,
++		.extra1 = SYSCTL_ZERO,
++		.extra2 = SYSCTL_THREE,
++	},
++	{
++		.procname = "sched_burst_penalty_offset",
++		.data = &sched_burst_penalty_offset,
++		.maxlen = sizeof(u8),
++		.mode = 0644,
++		.proc_handler = proc_dou8vec_minmax,
++		.extra1 = SYSCTL_ZERO,
++		.extra2 = &maxval_6_bits,
++	},
++	{
++		.procname = "sched_burst_penalty_scale",
++		.data = &sched_burst_penalty_scale,
++		.maxlen = sizeof(uint),
++		.mode = 0644,
++		.proc_handler = proc_douintvec_minmax,
++		.extra1 = SYSCTL_ZERO,
++		.extra2 = &maxval_12_bits,
++	},
++	{
++		.procname = "sched_burst_cache_lifetime",
++		.data = &sched_burst_cache_lifetime,
++		.maxlen = sizeof(uint),
++		.mode = 0644,
++		.proc_handler = proc_douintvec,
++	},
++	{
++		.procname = "sched_ghost_gaming_boost",
++		.data = &sched_ghost_gaming_boost,
++		.maxlen = sizeof(u8),
++		.mode = 0644,
++		.proc_handler = proc_dou8vec_minmax,
++		.extra1 = SYSCTL_ZERO,
++		.extra2 = &maxval_6_bits,
++	},
++	{
++		.procname = "sched_ghost_audio_boost",
++		.data = &sched_ghost_audio_boost,
++		.maxlen = sizeof(u8),
++		.mode = 0644,
++		.proc_handler = proc_dou8vec_minmax,
++		.extra1 = SYSCTL_ZERO,
++		.extra2 = &maxval_6_bits,
++	},
++	{
++		.procname = "sched_ghost_compositor_boost",
++		.data = &sched_ghost_compositor_boost,
++		.maxlen = sizeof(u8),
++		.mode = 0644,
++		.proc_handler = proc_dou8vec_minmax,
++		.extra1 = SYSCTL_ZERO,
++		.extra2 = &maxval_6_bits,
++	},
++	{
++		.procname = "sched_ghost_input_boost",
++		.data = &sched_ghost_input_boost,
++		.maxlen = sizeof(u8),
++		.mode = 0644,
++		.proc_handler = proc_dou8vec_minmax,
++		.extra1 = SYSCTL_ZERO,
++		.extra2 = &maxval_6_bits,
++	},
++};
++
++static int __init sched_ghost_sysctl_init(void)
++{
++	register_sysctl_init("kernel", sched_ghost_sysctls);
++	return 0;
++}
++late_initcall(sched_ghost_sysctl_init);
++#endif /* CONFIG_SYSCTL */
++#endif /* CONFIG_SCHED_GHOST */
+diff --git a/kernel/sched/sched.h b/kernel/sched/sched.h
+index abc1234..def5678 100644
+--- a/kernel/sched/sched.h
++++ b/kernel/sched/sched.h
+@@ -2219,6 +2219,10 @@ static inline struct cpumask *group_balance_mask(struct sched_group *sg)
+ extern int group_balance_cpu(struct sched_group *sg);
+
+ extern void update_sched_domain_debugfs(void);
++#ifdef CONFIG_SCHED_GHOST
++extern void sched_update_min_base_slice(void);
++#endif /* CONFIG_SCHED_GHOST */
++
+ extern void dirty_sched_domain_sysctl(int cpu);
+
+ extern int sched_update_scaling(void);
+@@ -3014,6 +3018,10 @@ extern void wakeup_preempt(struct rq *rq, struct task_struct *p, int flags);
+ extern __read_mostly unsigned int sysctl_sched_nr_migrate;
+ extern __read_mostly unsigned int sysctl_sched_migration_cost;
+
++#ifdef CONFIG_SCHED_GHOST
++extern unsigned int sysctl_sched_min_base_slice;
++#endif /* CONFIG_SCHED_GHOST */
++
+ extern unsigned int sysctl_sched_base_slice;
+
+ extern int sysctl_resched_latency_warn_ms;

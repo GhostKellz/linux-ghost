@@ -6,14 +6,10 @@
 ### BUILD OPTIONS
 ### ============================================================
 
-### Kernel version selection
-# 'stable' - Use stable release (6.18.x)
-# 'rc' - Use release candidate (6.19-rcX)
-: "${_kernel_type:=stable}"
-
 ### Selecting the CPU scheduler
 # 'ghost' - GHOST Scheduler on EEVDF (Recommended for desktop/gaming, Zen4/Zen5 optimized)
 # 'eevdf' - Vanilla EEVDF (upstream default)
+# 'bore' - BORE (Burst-Oriented Response Enhancer)
 : "${_cpusched:=ghost}"
 
 ### CPU compiler optimizations
@@ -32,7 +28,7 @@
 # For LLVM: 'full', 'thin', 'thin-dist', or 'none'
 #   full - slower build, potentially best performance
 #   thin - faster build, good performance
-#   thin-dist - distributed ThinLTO (faster compile, good perf) [NEW in 6.19]
+#   thin-dist - distributed ThinLTO (faster compile, good perf)
 # For GCC: 'full' or 'none'
 #   full - GCC LTO (slow, high memory usage)
 : "${_lto_mode:=full}"
@@ -40,9 +36,6 @@
 ### Enable Zenify gaming optimizations (from Zen/Liquorix)
 # Tunes EEVDF scheduler for lower latency gaming
 : "${_zenify:=yes}"
-
-### Enable Clear Linux patches (Intel optimizations)
-: "${_clear_patches:=no}"
 
 ### Enable OpenRGB i2c controller support
 : "${_openrgb:=yes}"
@@ -75,7 +68,7 @@
 ### Running tick rate (1000Hz recommended for gaming)
 : "${_HZ_ticks:=1000}"
 
-### Choose between perodic, idle or full
+### Choose between periodic, idle or full
 # Full tickless recommended for gaming/low-latency
 : "${_tickrate:=full}"
 
@@ -91,7 +84,6 @@
 # Set to 'yes' to bundle nvidia-open modules (like CachyOS does)
 # Set to 'no' to use nvidia-open-dkms instead (default, recommended)
 # DKMS rebuilds automatically for each kernel - better for multi-kernel setups
-# WARNING: Bundled modules can conflict with other kernels using DKMS!
 : "${_nvidia_bundle:=no}"
 
 ### Build a debug package with non-stripped vmlinux
@@ -105,35 +97,20 @@
 : "${_zen5_x3d:=yes}"
 
 ### ACS Override (for VFIO/GPU passthrough)
-# Note: Already included in CachyOS base patch
 : "${_acs_override:=no}"
 
 ### ============================================================
 ### INTERNAL - Version Configuration
 ### ============================================================
 
-# Stable kernel
-_major=6.19
-_minor=11
-_cachyos_tagrel=2
+_major=7.0
+_minor=5
+_cachyos_tagrel=1
 
-# RC kernel (when _kernel_type=rc)
-# Note: Linux 7.0 follows 6.19 (no 6.20)
-_rc_major=7.0
-_rc_ver=rc7
-_rc_cachyos_tagrel=2
-
-if [[ "$_kernel_type" == "rc" ]]; then
-    pkgver="${_rc_major}.${_rc_ver/rc/}"
-    _srctag="cachyos-${_rc_major}-${_rc_ver}-${_rc_cachyos_tagrel}"
-    _srcname="${_srctag}"
-    _kernel_src="https://github.com/CachyOS/linux/releases/download/${_srctag}/${_srctag}.tar.gz"
-else
-    pkgver="${_major}.${_minor}"
-    _srctag="cachyos-${_major}.${_minor}-${_cachyos_tagrel}"
-    _srcname="${_srctag}"
-    _kernel_src="https://github.com/CachyOS/linux/releases/download/${_srctag}/${_srctag}.tar.gz"
-fi
+pkgver="${_major}.${_minor}"
+_srctag="cachyos-${_major}.${_minor}-${_cachyos_tagrel}"
+_srcname="${_srctag}"
+_kernel_src="https://github.com/CachyOS/linux/releases/download/${_srctag}/${_srctag}.tar.gz"
 
 # Package naming based on compiler
 if [[ "$_compiler" == "llvm" && "$_lto_mode" != "none" ]]; then
@@ -147,7 +124,7 @@ else
     _compiler_suffix=""
 fi
 
-pkgdesc="Linux Ghost 6.19 - GHOST Scheduler + Zenify + Zen4/Zen5 X3D + RTX 5090 + sched-ext (${_compiler^^}${_compiler_suffix:+ }${_lto_mode^^} LTO)"
+pkgdesc="Linux Ghost ${_major} - GHOST Scheduler + Zenify + Zen4/Zen5 X3D + RTX 5090 + sched-ext (${_compiler^^}${_compiler_suffix:+ }${_lto_mode^^} LTO)"
 pkgrel=1
 _kernver="$pkgver-$pkgrel"
 _kernuname="${pkgver}-${pkgbase#linux-}"
@@ -184,29 +161,35 @@ fi
 # Patch sources
 _patchsource="https://raw.githubusercontent.com/cachyos/kernel-patches/master/${_major}"
 _tkgpatch="https://raw.githubusercontent.com/Frogging-Family/linux-tkg/master/linux-tkg-patches/${_major}"
+_ghostpatch="https://raw.githubusercontent.com/GhostKellz/linux-ghost/refs/heads/main/patches"
 
-# NVIDIA versions - RTX 5090 (Blackwell) requires 570+
-# 595.58.03 has native 6.19 kernel support
-_nv_ver=595.58.03
+# NVIDIA compatibility reference - RTX 5090 (Blackwell) requires 570+
+# This version is NOT bundled by default; used for optional _nvidia_bundle=yes
+_nv_ver=595.71.05
 _nv_open_pkg="NVIDIA-kernel-module-source-${_nv_ver}"
 
 source=(
     "${_kernel_src}"
     "kernel.config::https://raw.githubusercontent.com/GhostKellz/linux-ghost/refs/heads/main/config/config"
     "kernel.fragment::https://raw.githubusercontent.com/GhostKellz/linux-ghost/refs/heads/main/config/ghost.fragment"
-    # CachyOS pre-patched source already includes: amd-pstate, bbr3, sched-ext, block opts, etc.
 )
 sha256sums=('SKIP' 'SKIP' 'SKIP')
 
-# GHOST scheduler patch (our enhanced scheduler based on BORE)
-if [[ "$_cpusched" == "ghost" ]]; then
-    source+=("0001-ghost-sched.patch::https://raw.githubusercontent.com/GhostKellz/linux-ghost/main/patches/0001-ghost-sched.patch")
+# BORE scheduler from CachyOS
+if [[ "$_cpusched" == "bore" ]]; then
+    source+=("${_patchsource}/sched/0001-bore-cachy.patch")
     sha256sums+=('SKIP')
 fi
 
-# Zenify gaming patches (from linux-tkg)
+# GHOST scheduler v2 for Linux 7
+if [[ "$_cpusched" == "ghost" ]]; then
+    source+=("${_ghostpatch}/ghost-sched-v2-linux7.patch")
+    sha256sums+=('SKIP')
+fi
+
+# Zenify gaming patches (fixed for CachyOS 7.0 pre-patched source)
 if [[ "$_zenify" == "yes" ]]; then
-    source+=("${_tkgpatch}/0003-glitched-base.patch")
+    source+=("${_ghostpatch}/0003-glitched-base.patch")
     sha256sums+=('SKIP')
     # EEVDF-specific zenify tuning
     if [[ -n "$(curl -sI "${_tkgpatch}/0003-glitched-eevdf-additions.patch" 2>/dev/null | grep '200 OK')" ]]; then
@@ -215,14 +198,13 @@ if [[ "$_zenify" == "yes" ]]; then
     fi
 fi
 
-# Clear Linux patches (Intel optimizations)
-if [[ "$_clear_patches" == "yes" ]]; then
-    source+=("${_tkgpatch}/0002-clear-patches.patch")
-    sha256sums+=('SKIP')
-fi
+# AMD Zen5 (znver5) support - CachyOS 7.0 only has up to MZEN4
+# This patch adds CONFIG_MZEN5 for Ryzen 9000 series / 9000X3D
+source+=("${_ghostpatch}/ghostzen5.patch")
+sha256sums+=('SKIP')
 
-# Zen5 MZEN5 Kconfig patch (adds -march=znver5 support)
-source+=("ghostzen5.patch::https://raw.githubusercontent.com/GhostKellz/linux-ghost/main/patches/ghostzen5.patch")
+# Misc TKG additions (Magic Trackpad 2 fix, ondemand governor fix, max ASLR bits)
+source+=("${_ghostpatch}/0012-misc-additions.patch")
 sha256sums+=('SKIP')
 
 # OpenRGB i2c support
@@ -241,11 +223,9 @@ fi
 if [[ "$_nvidia_bundle" == "yes" ]]; then
     source+=(
         "https://download.nvidia.com/XFree86/NVIDIA-kernel-module-source/${_nv_open_pkg}.tar.xz"
-        # linux-ghost exclusive NVIDIA patches
         "nvidia-ghost.conf::nvidia/nvidia-ghost.conf"
         "nv-ibt-support.patch::nvidia/Add-IBT-support.diff"
         "nv-gcc15.patch::nvidia/gcc-15.diff"
-        # Exclusive: Thunderbolt eGPU hot-plug support (PR #985)
         "nv-thunderbolt-egpu.patch::nvidia/0001-thunderbolt-egpu-hotplug.patch"
     )
     sha256sums+=('SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP')
@@ -279,6 +259,15 @@ prepare() {
     echo "-$pkgrel" > localversion.10-pkgrel
     echo "${pkgbase#linux}" > localversion.20-pkgname
 
+    # Initialize git repo for git-format patches
+    if [[ ! -d .git ]]; then
+        git init -q
+        git config user.email "build@localhost"
+        git config user.name "Build"
+        git add -A
+        git commit -q -m "Initial commit"
+    fi
+
     local src
     for src in "${source[@]}"; do
         src="${src%%::*}"
@@ -291,7 +280,7 @@ prepare() {
         src="${src%.zst}"
         [[ $src = *.patch ]] || continue
         echo "Applying patch $src..."
-        patch -Np1 < "../$src" || echo "Warning: patch $src failed, continuing..."
+        patch -Np1 < "../$src" || _die "Failed to apply patch $src"
     done
 
     echo "Setting config..."
@@ -361,11 +350,20 @@ prepare() {
 
     case "$_cpusched" in
         ghost)
-            echo "Enabling GHOST scheduler (Zen4/Zen5 X3D optimized)..."
-            scripts/config -e SCHED_GHOST
+            echo "Enabling GHOST scheduler v2..."
+            scripts/config -d SCHED_BORE -e SCHED_GHOST
+            scripts/config --set-val MIN_BASE_SLICE_NS 2000000
+            ;;
+        bore)
+            echo "Enabling BORE scheduler (burst-oriented response enhancer)..."
+            scripts/config -d SCHED_GHOST -e SCHED_BORE
+            scripts/config -e SCHED_BORE
+            # BORE tunables (from CachyOS)
+            scripts/config --set-val MIN_BASE_SLICE_NS 2000000
             ;;
         eevdf)
             echo "Using vanilla EEVDF scheduler..."
+            scripts/config -d SCHED_GHOST -d SCHED_BORE
             ;;
         *)
             _die "Invalid scheduler: $_cpusched"
@@ -397,7 +395,7 @@ prepare() {
                 scripts/config -e LTO_CLANG_THIN -d LTO_CLANG_THIN_DIST -d LTO_CLANG_FULL -d LTO_NONE
                 ;;
             thin-dist)
-                echo "Enabling Clang Distributed ThinLTO (6.19+)..."
+                echo "Enabling Clang Distributed ThinLTO..."
                 scripts/config -e LTO_CLANG_THIN_DIST -d LTO_CLANG_THIN -d LTO_CLANG_FULL -d LTO_NONE
                 ;;
             full)
@@ -442,7 +440,7 @@ prepare() {
 
     ### Tick type
     case "$_tickrate" in
-        perodic) scripts/config -d NO_HZ_IDLE -d NO_HZ_FULL -d NO_HZ -d NO_HZ_COMMON -e HZ_PERIODIC;;
+        periodic) scripts/config -d NO_HZ_IDLE -d NO_HZ_FULL -d NO_HZ -d NO_HZ_COMMON -e HZ_PERIODIC;;
         idle) scripts/config -d HZ_PERIODIC -d NO_HZ_FULL -e NO_HZ_IDLE -e NO_HZ -e NO_HZ_COMMON;;
         full) scripts/config -d HZ_PERIODIC -d NO_HZ_IDLE -d CONTEXT_TRACKING_FORCE -e NO_HZ_FULL_NODEF -e NO_HZ_FULL -e NO_HZ -e NO_HZ_COMMON -e CONTEXT_TRACKING;;
     esac
@@ -536,7 +534,7 @@ prepare() {
     # Crypto (Wine/Proton TLS)
     scripts/config -e TLS -m CRYPTO_AES_NI_INTEL
 
-    # Futex (Proton esync/fsync - built-in on 6.18)
+    # Futex (Proton esync/fsync)
     scripts/config -e FUTEX
 
     ### ============================================================
@@ -574,7 +572,7 @@ prepare() {
 
     ### Save configuration for later reuse
     echo "Saving config for reuse..."
-    cat .config > "${startdir}/config-${pkgver}-${pkgrel}${pkgbase#linux}"
+    cat .config > "${startdir}/config-${pkgver}-${pkgrel}-${pkgbase}"
 
     ### Prepare NVIDIA open modules with linux-ghost exclusive patches
     if [[ "$_nvidia_bundle" == "yes" ]]; then
@@ -756,4 +754,3 @@ for _p in "${pkgname[@]}"; do
         _package${_p#$pkgbase}
     }"
 done
-

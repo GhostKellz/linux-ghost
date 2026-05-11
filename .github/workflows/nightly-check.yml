@@ -99,10 +99,9 @@ jobs:
           echo "| kernel.org stable | ${{ steps.kernelorg.outputs.latest }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           if [[ "${{ steps.compare.outputs.needs_update }}" == "true" ]]; then
-            echo "⚠️ **Update available:** ${{ steps.compare.outputs.update_to }}" >> $GITHUB_STEP_SUMMARY
-            echo "🚀 **Auto-building release...**" >> $GITHUB_STEP_SUMMARY
+            echo "Update available: ${{ steps.compare.outputs.update_to }}" >> $GITHUB_STEP_SUMMARY
           else
-            echo "✅ **Up to date**" >> $GITHUB_STEP_SUMMARY
+            echo "Up to date" >> $GITHUB_STEP_SUMMARY
           fi
 
   auto-update:
@@ -154,4 +153,4 @@ jobs:
           git tag -a "${TAG}" -m "Release ${TAG}"
           git push origin "${TAG}"
 
-          echo "🏷️ Created tag ${TAG} - release workflow will build packages"
+          echo "Created tag ${TAG} - release workflow will build packages"
