@@ -22,6 +22,9 @@ All notable changes to linux-ghost are documented here.
 - Patches reorganized into `patches/` directory with GitHub raw URL references
 - Config updated for kernel 7.0
 
+### Fixed
+- Fix undefined symbol `sched_update_scaling` linker error when `CONFIG_SCHED_GHOST` is enabled — provide no-op stub instead of removing the function entirely, since upstream `debug.c` still references it via `sched_scaling_write`
+
 ### Removed
 - `_kernel_type` stable/rc toggle (7.0 is now stable)
 - `_clear_patches` option (Intel Clear Linux patches)

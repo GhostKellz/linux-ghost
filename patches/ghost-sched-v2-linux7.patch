@@ -455,23 +455,28 @@ index abc1234..def5678 100644
 
  	/* Pick the leftmost entity if it's eligible */
  	if (se && entity_eligible(cfs_rq, se)) {
-@@ -1105,6 +1143,7 @@ struct sched_entity *__pick_last_entity(struct cfs_rq *cfs_rq)
+@@ -1105,6 +1143,12 @@ struct sched_entity *__pick_last_entity(struct cfs_rq *cfs_rq)
  /**************************************************************
   * Scheduling class statistics methods:
   */
-+#ifndef CONFIG_SCHED_GHOST
++#ifdef CONFIG_SCHED_GHOST
++int sched_update_scaling(void)
++{
++	return 0;
++}
++#else
  int sched_update_scaling(void)
  {
  	unsigned int factor = get_update_sysctl_factor();
-@@ -1116,6 +1155,7 @@ int sched_update_scaling(void)
+@@ -1116,6 +1160,7 @@ int sched_update_scaling(void)
 
  	return 0;
  }
-+#endif /* !CONFIG_SCHED_GHOST */
++#endif /* CONFIG_SCHED_GHOST */
 
  static void clear_buddies(struct cfs_rq *cfs_rq, struct sched_entity *se);
 
-@@ -1316,6 +1356,10 @@ static void update_curr(struct cfs_rq *cfs_rq)
+@@ -1316,6 +1361,10 @@ static void update_curr(struct cfs_rq *cfs_rq)
  	resched = update_deadline(cfs_rq, curr);
 
  	if (entity_is_task(curr)) {
@@ -482,7 +487,7 @@ index abc1234..def5678 100644
  		/*
  		 * If the fair_server is active, we need to account for the
  		 * fair_server time whether or not the task is running on
-@@ -5176,6 +5220,14 @@ place_entity(struct cfs_rq *cfs_rq, struct sched_entity *se, int flags)
+@@ -5176,6 +5225,14 @@ place_entity(struct cfs_rq *cfs_rq, struct sched_entity *se, int flags)
  	u64 vslice, vruntime = avg_vruntime(cfs_rq);
  	s64 lag = 0;
 
@@ -497,7 +502,7 @@ index abc1234..def5678 100644
  	if (!se->custom_slice)
  		se->slice = sysctl_sched_base_slice;
  	vslice = calc_delta_fair(se->slice, se);
-@@ -5257,6 +5309,7 @@ place_entity(struct cfs_rq *cfs_rq, struct sched_entity *se, int flags)
+@@ -5257,6 +5314,7 @@ place_entity(struct cfs_rq *cfs_rq, struct sched_entity *se, int flags)
  	}
 
  	se->vruntime = vruntime - lag;
@@ -505,7 +510,7 @@ index abc1234..def5678 100644
 
  	if (se->rel_deadline) {
  		se->deadline += se->vruntime;
-@@ -5270,6 +5323,11 @@ place_entity(struct cfs_rq *cfs_rq, struct sched_entity *se, int flags)
+@@ -5270,6 +5328,11 @@ place_entity(struct cfs_rq *cfs_rq, struct sched_entity *se, int flags)
  	if (sched_feat(PLACE_DEADLINE_INITIAL) && (flags & ENQUEUE_INITIAL))
  		vslice /= 2;
 
@@ -517,7 +522,7 @@ index abc1234..def5678 100644
  	/*
  	 * EEVDF: vd_i = ve_i + r_i/w_i
  	 */
-@@ -5522,6 +5580,10 @@ dequeue_entity(struct cfs_rq *cfs_rq, struct sched_entity *se, int flags)
+@@ -5522,6 +5585,10 @@ dequeue_entity(struct cfs_rq *cfs_rq, struct sched_entity *se, int flags)
 
  		if (sched_feat(DELAY_DEQUEUE) && delay &&
  		    !entity_eligible(cfs_rq, se)) {
@@ -528,7 +533,7 @@ index abc1234..def5678 100644
  			update_load_avg(cfs_rq, se, 0);
  			set_delayed(se);
  			return false;
-@@ -6924,10 +6986,13 @@ requeue_delayed_entity(struct sched_entity *se)
+@@ -6924,10 +6991,13 @@ requeue_delayed_entity(struct sched_entity *se)
  	WARN_ON_ONCE(!se->on_rq);
 
  	if (sched_feat(DELAY_ZERO)) {
@@ -542,7 +547,7 @@ index abc1234..def5678 100644
  				__dequeue_entity(cfs_rq, se);
  			se->vlag = 0;
  			place_entity(cfs_rq, se, 0);
-@@ -7187,6 +7253,18 @@ static bool dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
+@@ -7187,6 +7258,18 @@ static bool dequeue_task_fair(struct rq *rq, struct task_struct *p, int flags)
  		return true;
  	}
 
@@ -561,7 +566,7 @@ index abc1234..def5678 100644
  	if (!p->se.sched_delayed)
  		util_est_dequeue(&rq->cfs, p);
 
-@@ -9220,6 +9300,10 @@ static void yield_task_fair(struct rq *rq)
+@@ -9220,6 +9305,10 @@ static void yield_task_fair(struct rq *rq)
  	 * Update run-time statistics of the 'current'.
  	 */
  	update_curr(cfs_rq);
@@ -572,7 +577,7 @@ index abc1234..def5678 100644
  	/*
  	 * Tell update_rq_clock() that we've just updated,
  	 * so we don't do microscopic update in schedule()
-@@ -13668,6 +13752,10 @@ static void switched_to_fair(struct rq *rq, struct task_struct *p)
+@@ -13668,6 +13757,10 @@ static void switched_to_fair(struct rq *rq, struct task_struct *p)
 
  	attach_task_cfs_rq(p);
 
