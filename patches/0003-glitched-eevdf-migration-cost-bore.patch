@@ -1,0 +1,25 @@
+Zenify CPU migration cost tuning for the BORE tree (_cpusched=bore).
+
+The CachyOS BORE patch collapses the sched_migration_cost declaration into a
+single unconditional line and renames the surrounding guard to
+CONFIG_SCHED_BORE, so the CACHY-layout override in
+0003-glitched-eevdf-migration-cost.patch no longer applies. This variant layers
+the same ZENIFY 250us override on top of the BORE layout.
+
+  - sched_migration_cost: ZENIFY 250us (overrides BORE/default 500us)
+
+diff --git a/kernel/sched/fair.c b/kernel/sched/fair.c
+--- a/kernel/sched/fair.c
++++ b/kernel/sched/fair.c
+@@ -97,7 +97,11 @@
+ static unsigned int normalized_sysctl_sched_base_slice	= 700000ULL;
+ #endif /* CONFIG_SCHED_BORE */
+ 
++#ifdef CONFIG_ZENIFY
++__read_mostly unsigned int sysctl_sched_migration_cost	= 250000UL;
++#else
+ __read_mostly unsigned int sysctl_sched_migration_cost	= 500000UL;
++#endif
+ 
+ static int __init setup_sched_thermal_decay_shift(char *str)
+ {

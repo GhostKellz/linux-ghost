@@ -18,7 +18,7 @@
   <a href="#build-options"><img src="https://img.shields.io/badge/Clang-19-5C6BC0?style=for-the-badge&logo=llvm&logoColor=white" alt="Clang"></a>
   <a href="#build-options"><img src="https://img.shields.io/badge/GCC-14%2F15-D32F2F?style=for-the-badge&logo=gnu&logoColor=white" alt="GCC"></a>
   <a href="#quick-start"><img src="https://img.shields.io/badge/Arch-Linux-1793D1?style=for-the-badge&logo=archlinux&logoColor=white" alt="Arch Linux"></a>
-  <a href="#"><img src="https://img.shields.io/badge/Linux-6.19+-FCC624?style=for-the-badge&logo=linux&logoColor=black" alt="Kernel 6.19+"></a>
+  <a href="#"><img src="https://img.shields.io/badge/Linux-7.1+-FCC624?style=for-the-badge&logo=linux&logoColor=black" alt="Kernel 7.1+"></a>
 </p>
 
 ---
@@ -47,7 +47,7 @@ A custom Linux kernel built for enthusiasts running AMD Ryzen X3D processors (99
 ## Features
 
 ### CPU & Scheduling
-- **GHOST Scheduler** — Burst-oriented response enhancer for snappy desktop feel
+- **GHOST Scheduler** — Gaming-Hybrid Optimized Scheduler Technology; EEVDF-based with task-class aware boosting (audio/input/compositor/gaming/wineserver) for low-latency desktop and gaming
 - **sched-ext Ready** — Runtime scheduler switching with scx_lavd (gaming) or scx_bpfland (desktop)
 - **AMD 3D V-Cache Optimizer** — Automatic cache/frequency CCD preference for X3D chips
 - **1000Hz Full Tickless** — Ultra-low latency configuration
@@ -71,6 +71,12 @@ A custom Linux kernel built for enthusiasts running AMD Ryzen X3D processors (99
 
 ---
 
+## Documentation
+
+Start with [docs/README.md](docs/README.md) for the structured docs index, build options, kernel configuration notes, scheduler docs, NVIDIA setup, and maintainer workflow.
+
+---
+
 ## Quick Start
 
 ### Prerequisites
@@ -87,7 +93,7 @@ sudo pacman -S base-devel bc cpio gettext libelf pahole perl python \
 git clone https://github.com/ghostkellz/linux-ghost.git
 cd linux-ghost
 
-# Build with defaults (LLVM, Full LTO, BORE, native CPU)
+# Build with defaults (LLVM, Full LTO, GHOST scheduler, native CPU)
 makepkg -sf
 
 # Install
@@ -121,7 +127,7 @@ _compiler=gcc makepkg -sf
 # LTO: full (default), thin, or none
 _lto_mode=thin makepkg -sf
 
-# Scheduler: ghost (default) or eevdf
+# Scheduler: ghost (default), bore, or eevdf
 _cpusched=eevdf makepkg -sf
 
 # CPU target: native (default), zen5, zen4, generic
@@ -130,8 +136,8 @@ _processor_opt=zen5 makepkg -sf
 # Bundle NVIDIA modules (default: no, use DKMS)
 _nvidia_bundle=yes makepkg -sf
 
-# RC kernel (6.19-rc)
-_kernel_type=rc makepkg -sf
+# See all supported build options
+less docs/getting-started/build-options.md
 ```
 
 ---
@@ -189,7 +195,7 @@ sudo ghost-vcache frequency
 |---------|-------|---------|
 | Tick Rate | 1000Hz | Low latency |
 | Tick Type | Full Tickless | Gaming/interactive |
-| Preemption | Full (PREEMPT_LAZY) | Responsiveness |
+| Preemption | Full (PREEMPT) | Responsiveness |
 | THP | Always | Memory performance |
 | Governor | Performance | Maximum clocks |
 | TCP | BBR3 | Network performance |
@@ -200,7 +206,7 @@ sudo ghost-vcache frequency
 ```
 CONFIG_AMD_3D_VCACHE=y          # V-Cache optimizer
 CONFIG_SCHED_CLASS_EXT=y        # sched-ext support
-CONFIG_PREEMPT_LAZY=y           # New lazy preemption
+CONFIG_PREEMPT=y                # Full preemption (low latency)
 CONFIG_AMD_PSTATE_PREFCORE=y    # Preferred core ranking
 CONFIG_NTSYNC=m                 # Wine/Proton sync
 ```
@@ -226,6 +232,12 @@ linux-ghost/
 │   └── README.md
 ├── patches/
 │   └── README.md
+├── docs/
+│   ├── README.md
+│   ├── getting-started/
+│   ├── kernel/
+│   ├── hardware/
+│   └── development/
 └── assets/
     └── logo/
 ```
@@ -280,7 +292,7 @@ cat /sys/kernel/sched_ext/state
 
 - [CachyOS](https://github.com/CachyOS/linux-cachyos) — Base patches and configuration
 - [linux-tkg](https://github.com/Frogging-Family/linux-tkg) — Zenify patches and inspiration
-- [GHOST Scheduler](https://github.com/firelzrd/bore-scheduler) — GHOST scheduler
+- [BORE Scheduler](https://github.com/firelzrd/bore-scheduler) — optional `_cpusched=bore` alternative and design inspiration for GHOST
 - [sched-ext](https://github.com/sched-ext/scx) — Extensible scheduler framework
 - [NVIDIA open-gpu-kernel-modules](https://github.com/NVIDIA/open-gpu-kernel-modules) — Community patches
 

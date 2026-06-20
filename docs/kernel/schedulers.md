@@ -6,21 +6,37 @@ Linux Ghost supports multiple CPU scheduling strategies for different workloads.
 
 ## Built-in Schedulers
 
-### BORE (Burst-Oriented Response Enhancer)
+### GHOST (Gaming-Hybrid Optimized Scheduler Technology)
 
-**Default scheduler for linux-ghost.**
+**Default scheduler for linux-ghost** (`_cpusched=ghost`).
 
-BORE is built on top of EEVDF and adds burst-oriented response enhancement for better desktop interactivity.
+GHOST builds on EEVDF and adds task-class aware boosting for desktop and gaming
+workloads (audio, input, compositor, gaming, wineserver, network and batch
+classes). It targets low-latency responsiveness on Zen4/Zen5 systems while
+keeping EEVDF's fairness as the baseline.
 
 ```bash
-# Build with BORE (default)
+# Build with GHOST (default)
+_cpusched=ghost makepkg -sf
+```
+
+**Best for:**
+- Gaming and low-latency desktop
+- Interactive workloads
+- Zen4/Zen5 X3D systems
+
+### BORE (Burst-Oriented Response Enhancer)
+
+Optional alternative carried in the CachyOS base. Built on top of EEVDF and adds
+burst-oriented response enhancement for desktop interactivity.
+
+```bash
+# Build with BORE
 _cpusched=bore makepkg -sf
 ```
 
 **Best for:**
 - Desktop usage
-- Gaming
-- Interactive workloads
 - Mixed workloads
 
 ### EEVDF (Earliest Eligible Virtual Deadline First)
@@ -122,8 +138,9 @@ cat /sys/kernel/sched_ext/state
 # Check which scheduler is loaded
 cat /sys/kernel/sched_ext/root/ops
 
-# Check BORE status
-dmesg | grep -i bore
+# Check GHOST status (built-in default)
+zcat /proc/config.gz | grep CONFIG_SCHED_GHOST
+dmesg | grep -i ghost
 ```
 
 ---
@@ -173,9 +190,10 @@ Try adjusting performance mode:
 sudo scx_lavd --performance
 ```
 
-### Return to BORE
+### Return to GHOST
 
-Simply stop the sched-ext scheduler:
+Stopping the sched-ext scheduler hands control back to the built-in default
+(GHOST):
 
 ```bash
 sudo systemctl stop scx-ghost-gaming

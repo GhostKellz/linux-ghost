@@ -1,0 +1,23 @@
+Zenify CPU migration cost tuning for the CACHY/EEVDF tree (ghost, eevdf).
+
+Splits sched_migration_cost out of 0003-glitched-eevdf-additions.patch so the
+ZENIFY override can be applied against the CACHY layout used by the ghost and
+eevdf schedulers. The BORE scheduler restructures this region, so it uses the
+companion 0003-glitched-eevdf-migration-cost-bore.patch instead.
+
+  - sched_migration_cost: ZENIFY 250us (overrides CACHY 400us / default 500us)
+
+diff --git a/kernel/sched/fair.c b/kernel/sched/fair.c
+--- a/kernel/sched/fair.c
++++ b/kernel/sched/fair.c
+@@ -85,7 +85,9 @@
+ static unsigned int normalized_sysctl_sched_base_slice	= 700000ULL;
+ #endif /* CONFIG_CACHY */
+ 
+-#ifdef CONFIG_CACHY
++#ifdef CONFIG_ZENIFY
++__read_mostly unsigned int sysctl_sched_migration_cost	= 250000UL;
++#elif defined(CONFIG_CACHY)
+ __read_mostly unsigned int sysctl_sched_migration_cost	= 400000UL;
+ #else
+ __read_mostly unsigned int sysctl_sched_migration_cost	= 500000UL;

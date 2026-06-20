@@ -294,9 +294,10 @@ CONFIG_NTSYNC=m
 # Preemption (Low Latency)
 # =========================
 
-# PREEMPT_LAZY - new in 6.13, best for desktop/gaming
-# Full preempt for RT tasks, lazy for normal (reduces overhead)
-CONFIG_PREEMPT_LAZY=y
+# Full preemption (low latency) is the shipped default. PKGBUILD _preempt=full
+# enables CONFIG_PREEMPT and disables PREEMPT_LAZY; PREEMPT_DYNAMIC keeps the
+# mode switchable at boot via the preempt= cmdline.
+CONFIG_PREEMPT=y
 CONFIG_PREEMPT_DYNAMIC=y
 
 # =========================

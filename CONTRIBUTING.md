@@ -2,14 +2,15 @@
 
 ## Getting Started
 
-linux-ghost is a custom Arch Linux kernel targeting AMD Zen5 X3D and NVIDIA RTX 5090 workloads. Contributions that improve gaming performance, hardware support, or build reliability are welcome.
+linux-ghost is a custom Arch Linux kernel package targeting AMD Zen/X3D and NVIDIA RTX workloads. Contributions that improve gaming performance, hardware support, scheduler behavior, or build reliability are welcome.
 
 ### Prerequisites
 
 - Arch Linux (or Arch-based) system
 - `base-devel` package group
 - LLVM/Clang toolchain (`clang`, `llvm`, `lld`)
-- Enough disk space for a kernel build (~30GB)
+- Enough disk space for a kernel build, usually 30GB or more
+- Familiarity with Arch `makepkg`
 
 ## Building
 
@@ -19,7 +20,7 @@ cd linux-ghost
 makepkg -sf
 ```
 
-Override build options via environment:
+Override build options via environment. See [docs/getting-started/build-options.md](docs/getting-started/build-options.md) for the full list.
 
 ```bash
 _cpusched=bore _lto_mode=thin makepkg -sf
@@ -38,6 +39,7 @@ patches/
   0003-glitched-base.patch # Zenify (modified for CachyOS pre-patched source)
   0012-misc-additions.patch # TKG misc fixes
 nvidia/                   # Optional NVIDIA module patches
+docs/                     # Structured user and maintainer docs
 .github/workflows/        # CI: build test, nightly check, release
 ```
 
@@ -67,14 +69,20 @@ If a patch needs updating for a new kernel version, edit it in `patches/` and te
 ### Adding new patches
 
 1. Place the `.patch` file in `patches/`
-2. Add it to the `source=()` array in PKGBUILD using the `_ghostpatch` URL prefix
-3. Add a corresponding `sha256sums+=('SKIP')` entry
-4. Update `patches/README.md`
-5. Test a full build
+2. Add an `_apply_local_patch "<file>.patch"` call in `prepare()`, in the correct
+   order relative to the other patches
+3. Update `patches/README.md`
+4. Test a full build
+
+Linux-ghost's own patches are applied locally from `${startdir}/patches/` during
+`prepare()` (not fetched from a URL), so release builds use the checked-out tag
+content.
 
 ### Upstream patches
 
-Patches from CachyOS or linux-tkg are fetched at build time from their repos. Do not add local copies of upstream patches — reference them via URL in PKGBUILD instead.
+Patches from CachyOS or linux-tkg (OpenRGB, ACS override, dkms-clang, the BORE
+patch) are currently fetched at build time and added to the `source=()` array
+with a `sha256sums+=('SKIP')` entry.
 
 ## Config Changes
 
@@ -89,7 +97,7 @@ When a new CachyOS release is available:
 2. Verify the CachyOS tag exists: `https://github.com/CachyOS/linux/releases`
 3. Update `config/config` by running `make olddefconfig` against new source
 4. Test-build patches apply cleanly
-5. Update CHANGELOG.md
+5. Update [docs/README.md](docs/README.md), [CHANGELOG.md](CHANGELOG.md), and [SECURITY.md](SECURITY.md)
 6. Tag as `v{major}.{minor}-{pkgrel}`
 
 ## Reporting Issues
@@ -98,3 +106,13 @@ Open an issue on GitHub with:
 - Kernel version and build options used
 - Relevant `dmesg` or build log output
 - Hardware details if it's a hardware-specific issue
+
+## Documentation
+
+Keep documentation changes close to the behavior they describe:
+
+- Build flags: [docs/getting-started/build-options.md](docs/getting-started/build-options.md)
+- Kernel config: [docs/kernel/configuration.md](docs/kernel/configuration.md)
+- Schedulers: [docs/kernel/schedulers.md](docs/kernel/schedulers.md)
+- NVIDIA support: [docs/hardware/nvidia.md](docs/hardware/nvidia.md)
+- Release workflow: [docs/development/README.md](docs/development/README.md)

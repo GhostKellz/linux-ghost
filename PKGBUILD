@@ -103,8 +103,8 @@
 ### INTERNAL - Version Configuration
 ### ============================================================
 
-_major=7.0
-_minor=5
+_major=7.1
+_minor=0
 _cachyos_tagrel=1
 
 pkgver="${_major}.${_minor}"
@@ -161,8 +161,6 @@ fi
 # Patch sources
 _patchsource="https://raw.githubusercontent.com/cachyos/kernel-patches/master/${_major}"
 _tkgpatch="https://raw.githubusercontent.com/Frogging-Family/linux-tkg/master/linux-tkg-patches/${_major}"
-_ghostpatch="https://raw.githubusercontent.com/GhostKellz/linux-ghost/refs/heads/main/patches"
-
 # NVIDIA compatibility reference - RTX 5090 (Blackwell) requires 570+
 # This version is NOT bundled by default; used for optional _nvidia_bundle=yes
 _nv_ver=595.71.05
@@ -170,10 +168,8 @@ _nv_open_pkg="NVIDIA-kernel-module-source-${_nv_ver}"
 
 source=(
     "${_kernel_src}"
-    "kernel.config::https://raw.githubusercontent.com/GhostKellz/linux-ghost/refs/heads/main/config/config"
-    "kernel.fragment::https://raw.githubusercontent.com/GhostKellz/linux-ghost/refs/heads/main/config/ghost.fragment"
 )
-sha256sums=('SKIP' 'SKIP' 'SKIP')
+sha256sums=('SKIP')
 
 # BORE scheduler from CachyOS
 if [[ "$_cpusched" == "bore" ]]; then
@@ -181,31 +177,14 @@ if [[ "$_cpusched" == "bore" ]]; then
     sha256sums+=('SKIP')
 fi
 
-# GHOST scheduler v2 for Linux 7
-if [[ "$_cpusched" == "ghost" ]]; then
-    source+=("${_ghostpatch}/ghost-sched-v2-linux7.patch")
-    sha256sums+=('SKIP')
-fi
+# GHOST, Zenify, Zen5, misc, and BBR3 patches are maintained in this repo and
+# applied from ${startdir}/patches during prepare(). They are intentionally not
+# fetched from raw main so release builds use the checked-out tag content.
 
-# Zenify gaming patches (fixed for CachyOS 7.0 pre-patched source)
-if [[ "$_zenify" == "yes" ]]; then
-    source+=("${_ghostpatch}/0003-glitched-base.patch")
-    sha256sums+=('SKIP')
-    # EEVDF-specific zenify tuning
-    if [[ -n "$(curl -sI "${_tkgpatch}/0003-glitched-eevdf-additions.patch" 2>/dev/null | grep '200 OK')" ]]; then
-        source+=("${_tkgpatch}/0003-glitched-eevdf-additions.patch")
-        sha256sums+=('SKIP')
-    fi
-fi
-
-# AMD Zen5 (znver5) support - CachyOS 7.0 only has up to MZEN4
-# This patch adds CONFIG_MZEN5 for Ryzen 9000 series / 9000X3D
-source+=("${_ghostpatch}/ghostzen5.patch")
-sha256sums+=('SKIP')
+# AMD Zen5 (znver5) support - mainline 7.1 and CachyOS only go up to MZEN4
+# This patch adds CONFIG_MZEN5 for Ryzen 9000 series / 9000X3D (still required on 7.1)
 
 # Misc TKG additions (Magic Trackpad 2 fix, ondemand governor fix, max ASLR bits)
-source+=("${_ghostpatch}/0012-misc-additions.patch")
-sha256sums+=('SKIP')
 
 # OpenRGB i2c support
 if [[ "$_openrgb" == "yes" ]]; then
@@ -223,12 +202,8 @@ fi
 if [[ "$_nvidia_bundle" == "yes" ]]; then
     source+=(
         "https://download.nvidia.com/XFree86/NVIDIA-kernel-module-source/${_nv_open_pkg}.tar.xz"
-        "nvidia-ghost.conf::nvidia/nvidia-ghost.conf"
-        "nv-ibt-support.patch::nvidia/Add-IBT-support.diff"
-        "nv-gcc15.patch::nvidia/gcc-15.diff"
-        "nv-thunderbolt-egpu.patch::nvidia/0001-thunderbolt-egpu-hotplug.patch"
     )
-    sha256sums+=('SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP')
+    sha256sums+=('SKIP')
 fi
 
 # Build flags based on compiler choice
@@ -268,28 +243,62 @@ prepare() {
         git commit -q -m "Initial commit"
     fi
 
-    local src
-    for src in "${source[@]}"; do
-        src="${src%%::*}"
-        # Skip nvidia patches (applied separately to nvidia source)
-        [[ "$src" == nv-*.patch ]] && continue
-        [[ "$src" == nvidia-ghost.conf ]] && continue
-        # Skip config fragments
-        [[ "$src" == *.fragment ]] && continue
-        src="${src##*/}"
-        src="${src%.zst}"
-        [[ $src = *.patch ]] || continue
-        echo "Applying patch $src..."
-        patch -Np1 < "../$src" || _die "Failed to apply patch $src"
-    done
+    _apply_local_patch() {
+        local patch_file="$1"
+        echo "Applying local patch $patch_file..."
+        patch -Np1 < "${startdir}/patches/${patch_file}" || _die "Failed to apply local patch $patch_file"
+    }
+
+    _apply_downloaded_patch() {
+        local patch_file="$1"
+        echo "Applying downloaded patch $patch_file..."
+        patch -Np1 < "../${patch_file}" || _die "Failed to apply downloaded patch $patch_file"
+    }
+
+    if [[ "$_cpusched" == "bore" ]]; then
+        _apply_downloaded_patch "0001-bore-cachy.patch"
+    elif [[ "$_cpusched" == "ghost" ]]; then
+        _apply_local_patch "ghost-sched-v2-linux7.patch"
+    fi
+
+    if [[ "$_zenify" == "yes" ]]; then
+        _apply_local_patch "0003-glitched-base.patch"
+        _apply_local_patch "0003-glitched-eevdf-additions.patch"
+        # sched_migration_cost lives in a region BORE restructures, so the
+        # ZENIFY override ships as two layout-specific variants.
+        if [[ "$_cpusched" == "bore" ]]; then
+            _apply_local_patch "0003-glitched-eevdf-migration-cost-bore.patch"
+        else
+            _apply_local_patch "0003-glitched-eevdf-migration-cost.patch"
+        fi
+    fi
+
+    _apply_local_patch "ghostzen5.patch"
+    _apply_local_patch "0012-misc-additions.patch"
+
+    if [[ "$_tcp_bbr3" == "yes" ]]; then
+        _apply_local_patch "bbr3-default.patch"
+    fi
+
+    if [[ "$_openrgb" == "yes" ]]; then
+        _apply_downloaded_patch "0014-OpenRGB.patch"
+    fi
+
+    if [[ "$_acs_override" == "yes" ]]; then
+        _apply_downloaded_patch "0006-add-acs-overrides_iommu.patch"
+    fi
+
+    if [[ "$_compiler" == "llvm" ]]; then
+        _apply_downloaded_patch "dkms-clang.patch"
+    fi
 
     echo "Setting config..."
-    cp "${startdir}/kernel.config" .config
+    cp "${startdir}/config/config" .config
 
     # Apply ghost.fragment config overrides
-    if [[ -f "${startdir}/kernel.fragment" ]]; then
-        echo "Applying kernel.fragment config..."
-        scripts/kconfig/merge_config.sh -m .config "${startdir}/kernel.fragment"
+    if [[ -f "${startdir}/config/ghost.fragment" ]]; then
+        echo "Applying ghost.fragment config..."
+        scripts/kconfig/merge_config.sh -m .config "${startdir}/config/ghost.fragment"
     fi
 
     ### ============================================================
@@ -351,8 +360,10 @@ prepare() {
     case "$_cpusched" in
         ghost)
             echo "Enabling GHOST scheduler v2..."
+            # MIN_BASE_SLICE_NS is defined by the BORE patch (not applied here), so
+            # the GHOST path has no such symbol; base-slice tuning rides
+            # sysctl_sched_base_slice at runtime instead.
             scripts/config -d SCHED_BORE -e SCHED_GHOST
-            scripts/config --set-val MIN_BASE_SLICE_NS 2000000
             ;;
         bore)
             echo "Enabling BORE scheduler (burst-oriented response enhancer)..."
@@ -462,11 +473,15 @@ prepare() {
     fi
 
     ### BBR3
+    # Drop builtin BBR v1 (-d TCP_CONG_BBR) so only BBR3 is built-in: avoids the
+    # full-LTO duplicate tcp_bbr_check_kfunc_ids symbol. DEFAULT_BBR3 comes from
+    # bbr3-default.patch applied above. Mirrors the shipped cachyos 7.1 build.
     if [[ "$_tcp_bbr3" == "yes" ]]; then
         echo "Enabling TCP BBR3..."
         scripts/config -m TCP_CONG_CUBIC -d DEFAULT_CUBIC \
-            -e TCP_CONG_BBR -e DEFAULT_BBR --set-str DEFAULT_TCP_CONG bbr \
-            -m NET_SCH_FQ_CODEL -e NET_SCH_FQ -d CONFIG_DEFAULT_FQ_CODEL -e CONFIG_DEFAULT_FQ
+            -d TCP_CONG_BBR -d DEFAULT_BBR \
+            -e TCP_CONG_BBR3 -e DEFAULT_BBR3 --set-str DEFAULT_TCP_CONG bbr3 \
+            -m NET_SCH_FQ_CODEL -e NET_SCH_FQ -d DEFAULT_FQ_CODEL -e DEFAULT_FQ
     fi
 
     ### THP
@@ -556,9 +571,9 @@ prepare() {
 
     ### Rewrite configuration
     echo "Rewrite configuration..."
+    make "${BUILD_FLAGS[@]}" olddefconfig
     make "${BUILD_FLAGS[@]}" prepare
-    yes "" | make "${BUILD_FLAGS[@]}" config >/dev/null
-    diff -u ../config .config || :
+    diff -u "${startdir}/config/config" .config || :
 
     ### Prepared version
     make -s kernelrelease > version
@@ -572,7 +587,7 @@ prepare() {
 
     ### Save configuration for later reuse
     echo "Saving config for reuse..."
-    cat .config > "${startdir}/config-${pkgver}-${pkgrel}-${pkgbase}"
+    cat .config > "${srcdir}/config-${pkgver}-${pkgrel}-${pkgbase}"
 
     ### Prepare NVIDIA open modules with linux-ghost exclusive patches
     if [[ "$_nvidia_bundle" == "yes" ]]; then
@@ -581,14 +596,14 @@ prepare() {
 
         # Compatibility patches (IBT/SLS hardening, GCC 15)
         echo "Applying IBT support patch..."
-        patch -Np1 -i "${srcdir}/nv-ibt-support.patch" -d "${srcdir}/${_nv_open_pkg}/" || true
+        patch -Np1 -i "${startdir}/nvidia/Add-IBT-support.diff" -d "${srcdir}/${_nv_open_pkg}/" || true
 
         echo "Applying GCC 15 compatibility patch..."
-        patch -Np1 -i "${srcdir}/nv-gcc15.patch" -d "${srcdir}/${_nv_open_pkg}/" || true
+        patch -Np1 -i "${startdir}/nvidia/gcc-15.diff" -d "${srcdir}/${_nv_open_pkg}/" || true
 
         # linux-ghost EXCLUSIVE patches
         echo "Applying Thunderbolt eGPU hot-plug support (PR #985)..."
-        patch -Np1 -i "${srcdir}/nv-thunderbolt-egpu.patch" -d "${srcdir}/${_nv_open_pkg}/" || true
+        patch -Np1 -i "${startdir}/nvidia/0001-thunderbolt-egpu-hotplug.patch" -d "${srcdir}/${_nv_open_pkg}/" || true
     fi
 }
 
@@ -617,6 +632,7 @@ _package() {
     optdepends=(
         'wireless-regdb: to set the correct wireless channels of your country'
         'linux-firmware: firmware images needed for some devices'
+        'amd-ucode: AMD CPU microcode (recommended for Zen5/X3D; early-loaded via initramfs)'
         'modprobed-db: Keeps track of EVERY kernel module probed'
         'scx-scheds: sched-ext schedulers (scx_lavd, scx_bpfland)'
         'nvidia-open-dkms: NVIDIA open kernel modules (RTX 20+/Blackwell)'
@@ -636,6 +652,9 @@ _package() {
     echo "Installing modules..."
     ZSTD_CLEVEL=19 make "${BUILD_FLAGS[@]}" INSTALL_MOD_PATH="$pkgdir/usr" INSTALL_MOD_STRIP=1 \
         DEPMOD=/doesnt/exist modules_install
+
+    install -Dm644 "${startdir}/nvidia/nvidia-ghost.conf" \
+        "$pkgdir/usr/share/linux-ghost/nvidia-ghost.conf"
 
     rm "$modulesdir"/build
 }
@@ -735,7 +754,7 @@ _package-nvidia-open() {
     install -Dt "$pkgdir/usr/share/licenses/${pkgname}" -m644 COPYING
 
     # Install linux-ghost NVIDIA config (GSP stutter mitigation, etc.)
-    install -Dm644 "${srcdir}/nvidia-ghost.conf" \
+    install -Dm644 "${startdir}/nvidia/nvidia-ghost.conf" \
         "$pkgdir/etc/modprobe.d/nvidia-ghost.conf"
 
     find "$pkgdir" -name '*.ko' -exec zstd --rm -19 -T0 {} +

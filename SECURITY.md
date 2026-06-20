@@ -12,12 +12,16 @@ This policy covers:
 
 ## Supported Versions
 
-Only the latest release is supported with security updates.
+Only the latest stable release line is supported with security updates.
+
+> **Note:** 7.1.0-1 is currently an unreleased release candidate under
+> validation. The table reflects the intended support line once it is tagged and
+> published.
 
 | Version | Supported |
 |---------|-----------|
-| 7.0.x   | Yes       |
-| < 7.0   | No        |
+| 7.1.x   | Yes (once 7.1.0-1 is published; currently RC) |
+| < 7.1   | No        |
 
 ## Reporting a Vulnerability
 

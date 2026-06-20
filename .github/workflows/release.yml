@@ -21,6 +21,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+          fetch-depth: 0
 
       - name: Get version from tag
         id: version
@@ -34,6 +37,20 @@ jobs:
           echo "tag=${TAG}" >> $GITHUB_OUTPUT
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
           echo "Building release: ${TAG} (${VERSION})"
+
+      - name: Validate PKGBUILD version matches tag
+        run: |
+          source ./PKGBUILD
+          EXPECTED="${pkgver}-${pkgrel}"
+          ACTUAL="${{ steps.version.outputs.version }}"
+
+          echo "PKGBUILD version: ${EXPECTED}"
+          echo "Release tag version: ${ACTUAL}"
+
+          if [[ "${ACTUAL}" != "${EXPECTED}" ]]; then
+            echo "::error::Tag version ${ACTUAL} does not match PKGBUILD ${EXPECTED}"
+            exit 1
+          fi
 
       - name: Clean workspace
         run: |
@@ -56,6 +73,10 @@ jobs:
 
           # Get package names for upload
           PACKAGES=$(ls *.pkg.tar.zst 2>/dev/null | tr '\n' ' ')
+          if [[ -z "${PACKAGES}" ]]; then
+            echo "::error::Release build did not produce any package files"
+            exit 1
+          fi
           echo "packages=${PACKAGES}" >> $GITHUB_OUTPUT
 
       - name: Upload package artifacts
@@ -63,7 +84,7 @@ jobs:
         with:
           name: linux-ghost-packages-${{ steps.version.outputs.version }}
           path: "*.pkg.tar.zst"
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 30
 
       - name: Upload config artifact
@@ -80,6 +101,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+          fetch-depth: 0
 
       - name: Get version
         id: version
@@ -112,17 +136,19 @@ jobs:
           - **AMD Zen5/X3D** - Optimized for Ryzen 9000 series and X3D processors
           - **V-Cache aware** - Routes gaming tasks to V-Cache CCD
           - **sched-ext** - Support for BPF schedulers (scx_lavd, scx_bpfland, etc.)
-          - **PREEMPT_LAZY** - New hybrid preemption model (Linux 6.13+)
+          - **Full Preemption** - Low-latency PREEMPT, runtime-switchable via PREEMPT_DYNAMIC
           - **Full LTO** - Link-time optimization with -O3
           - **1000Hz tick** - Low latency for gaming
           - **Zenify** - Gaming-focused VM/scheduler/block layer tuning
 
           ### Build Configuration
           - Compiler: LLVM/Clang with Full LTO (-O3)
-          - CPU: Native optimizations (znver5 for Zen5)
+          - CPU: -march=native, tuned to the self-hosted build runner (use _processor_opt=zen5 for a portable znver5 binary)
           - Scheduler: GHOST v2 on EEVDF
-          - Tick rate: 1000Hz
-          - Preemption: PREEMPT_LAZY (hybrid)
+          - Tick rate: 1000Hz, full tickless (NO_HZ_FULL)
+          - Preemption: Full (PREEMPT, dynamic)
+          - TCP congestion: BBR3 (default), fq qdisc
+          - Transparent hugepages: always
 
           ### Installation
           ```bash

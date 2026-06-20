@@ -204,4 +204,4 @@ dmesg | grep -i nvidia
 
 - [NVIDIA open-gpu-kernel-modules](https://github.com/NVIDIA/open-gpu-kernel-modules)
 - [Arch Wiki NVIDIA](https://wiki.archlinux.org/title/NVIDIA)
-- [nvidia-ghost.conf](../nvidia/nvidia-ghost.conf)
+- [nvidia-ghost.conf](../../nvidia/nvidia-ghost.conf)

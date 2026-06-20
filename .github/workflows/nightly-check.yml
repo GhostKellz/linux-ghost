@@ -2,155 +2,144 @@ name: Nightly Upstream Check
 
 on:
   schedule:
-    # Run at 3 AM UTC daily
     - cron: '0 3 * * *'
   workflow_dispatch:
-    inputs:
-      force_build:
-        description: 'Force build even if no update'
-        type: boolean
-        default: false
 
 permissions:
-  contents: write
-  actions: write
+  contents: read
 
 jobs:
   check-upstream:
-    name: Check for New Kernel Releases
+    name: Check CachyOS Kernel Release
     runs-on: self-hosted
-    outputs:
-      needs_update: ${{ steps.compare.outputs.needs_update }}
-      update_to: ${{ steps.compare.outputs.update_to }}
-      new_minor: ${{ steps.compare.outputs.new_minor }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Get current version
+      - name: Get current package source tag
         id: current
         run: |
           source ./PKGBUILD
-          echo "major=${_major}" >> $GITHUB_OUTPUT
-          echo "minor=${_minor}" >> $GITHUB_OUTPUT
-          echo "version=${_major}.${_minor}" >> $GITHUB_OUTPUT
-          echo "Current: ${_major}.${_minor}"
 
-      - name: Check kernel.org stable
-        id: kernelorg
+          echo "source_tag=${_srctag}" >> "$GITHUB_OUTPUT"
+          echo "version=${pkgver}" >> "$GITHUB_OUTPUT"
+          echo "tagrel=${_cachyos_tagrel}" >> "$GITHUB_OUTPUT"
+          echo "major_minor=${_major}" >> "$GITHUB_OUTPUT"
+
+          echo "Current CachyOS source tag: ${_srctag}"
+
+      - name: Get latest CachyOS stable release
+        id: upstream
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Get latest stable kernel version from kernel.org
-          LATEST=$(curl -s https://www.kernel.org/releases.json | jq -r '.releases[] | select(.moniker == "stable") | .version' | head -1)
-          echo "latest=${LATEST}" >> $GITHUB_OUTPUT
-          echo "kernel.org stable: ${LATEST}"
+          set -euo pipefail
 
-      - name: Compare versions
-        id: compare
-        run: |
-          CURRENT="${{ steps.current.outputs.version }}"
-          KERNELORG="${{ steps.kernelorg.outputs.latest }}"
-          FORCE="${{ github.event.inputs.force_build }}"
+          response="$(curl -fsSL \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+            "https://api.github.com/repos/CachyOS/linux/releases?per_page=100")"
 
-          echo "=== Version Comparison ==="
-          echo "Current PKGBUILD: ${CURRENT}"
-          echo "kernel.org stable: ${KERNELORG}"
-          echo "Force build: ${FORCE}"
+          latest_tag="$(jq -r '
+            [
+              .[]
+              | select(.draft == false)
+              | select(.prerelease == false)
+              | .tag_name
+              | select(test("^cachyos-[0-9]+\\.[0-9]+\\.[0-9]+-[0-9]+$"))
+            ][0] // empty
+          ' <<< "${response}")"
 
-          CURRENT_MAJOR=$(echo "$CURRENT" | cut -d. -f1,2)
-          CURRENT_PATCH=$(echo "$CURRENT" | cut -d. -f3)
-          KERNELORG_MAJOR=$(echo "$KERNELORG" | cut -d. -f1,2)
-          KERNELORG_PATCH=$(echo "$KERNELORG" | cut -d. -f3)
-
-          NEEDS_UPDATE="false"
-          UPDATE_TO=""
-          NEW_MINOR=""
-
-          if [[ "$FORCE" == "true" ]]; then
-            NEEDS_UPDATE="true"
-            UPDATE_TO="$KERNELORG"
-            NEW_MINOR="$KERNELORG_PATCH"
-          elif [[ "$CURRENT_MAJOR" == "$KERNELORG_MAJOR" ]]; then
-            if [[ "$KERNELORG_PATCH" -gt "$CURRENT_PATCH" ]]; then
-              NEEDS_UPDATE="true"
-              UPDATE_TO="$KERNELORG"
-              NEW_MINOR="$KERNELORG_PATCH"
-              echo "New patch release available: ${KERNELORG}"
-            fi
-          elif [[ "$KERNELORG_MAJOR" > "$CURRENT_MAJOR" ]]; then
-            NEEDS_UPDATE="true"
-            UPDATE_TO="$KERNELORG"
-            NEW_MINOR="$KERNELORG_PATCH"
-            echo "New major release available: ${KERNELORG}"
+          if [[ -z "${latest_tag}" ]]; then
+            echo "::error::Could not find a stable CachyOS release tag"
+            exit 1
           fi
 
-          echo "needs_update=${NEEDS_UPDATE}" >> $GITHUB_OUTPUT
-          echo "update_to=${UPDATE_TO}" >> $GITHUB_OUTPUT
-          echo "new_minor=${NEW_MINOR}" >> $GITHUB_OUTPUT
+          version_rel="${latest_tag#cachyos-}"
+          version="${version_rel%-*}"
+          tagrel="${version_rel##*-}"
+          major_minor="$(cut -d. -f1,2 <<< "${version}")"
+          patch="$(cut -d. -f3 <<< "${version}")"
+          tarball_url="https://github.com/CachyOS/linux/releases/download/${latest_tag}/${latest_tag}.tar.gz"
+
+          curl -fsI "${tarball_url}" >/dev/null
+
+          echo "source_tag=${latest_tag}" >> "$GITHUB_OUTPUT"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "tagrel=${tagrel}" >> "$GITHUB_OUTPUT"
+          echo "major_minor=${major_minor}" >> "$GITHUB_OUTPUT"
+          echo "patch=${patch}" >> "$GITHUB_OUTPUT"
+          echo "tarball_url=${tarball_url}" >> "$GITHUB_OUTPUT"
+
+          echo "Latest CachyOS stable source tag: ${latest_tag}"
+          echo "Verified tarball: ${tarball_url}"
+
+      - name: Check patch source availability
+        id: patch_sources
+        run: |
+          set -euo pipefail
+
+          major_minor="${{ steps.upstream.outputs.major_minor }}"
+          bore_url="https://raw.githubusercontent.com/cachyos/kernel-patches/master/${major_minor}/sched/0001-bore-cachy.patch"
+          openrgb_url="https://raw.githubusercontent.com/Frogging-Family/linux-tkg/master/linux-tkg-patches/${major_minor}/0014-OpenRGB.patch"
+          dkms_url="https://raw.githubusercontent.com/cachyos/kernel-patches/master/${major_minor}/misc/dkms-clang.patch"
+
+          status="ok"
+
+          for url in "${bore_url}" "${openrgb_url}" "${dkms_url}"; do
+            if curl -fsI "${url}" >/dev/null; then
+              echo "Found: ${url}"
+            else
+              echo "::warning::Missing patch source: ${url}"
+              status="missing"
+            fi
+          done
+
+          echo "status=${status}" >> "$GITHUB_OUTPUT"
+
+      - name: Compare current and upstream
+        id: compare
+        run: |
+          set -euo pipefail
+
+          current="${{ steps.current.outputs.source_tag }}"
+          latest="${{ steps.upstream.outputs.source_tag }}"
+
+          needs_update=false
+          if [[ "${current}" != "${latest}" ]]; then
+            newest="$(printf '%s\n%s\n' "${current#cachyos-}" "${latest#cachyos-}" | sort -V | tail -n1)"
+            if [[ "${newest}" == "${latest#cachyos-}" ]]; then
+              needs_update=true
+            fi
+          fi
+
+          echo "needs_update=${needs_update}" >> "$GITHUB_OUTPUT"
+          echo "Current: ${current}"
+          echo "Latest:  ${latest}"
+          echo "Needs update: ${needs_update}"
 
       - name: Summary
         run: |
-          echo "## Nightly Check Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Source | Version |" >> $GITHUB_STEP_SUMMARY
-          echo "|--------|---------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Current PKGBUILD | ${{ steps.current.outputs.version }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| kernel.org stable | ${{ steps.kernelorg.outputs.latest }} |" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          if [[ "${{ steps.compare.outputs.needs_update }}" == "true" ]]; then
-            echo "Update available: ${{ steps.compare.outputs.update_to }}" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "Up to date" >> $GITHUB_STEP_SUMMARY
-          fi
+          {
+            echo "## Nightly CachyOS Upstream Check"
+            echo ""
+            echo "| Item | Value |"
+            echo "|------|-------|"
+            echo "| Current source tag | \`${{ steps.current.outputs.source_tag }}\` |"
+            echo "| Latest CachyOS stable tag | \`${{ steps.upstream.outputs.source_tag }}\` |"
+            echo "| Latest tarball | ${{ steps.upstream.outputs.tarball_url }} |"
+            echo "| Patch source status | \`${{ steps.patch_sources.outputs.status }}\` |"
+            echo "| Needs package update | \`${{ steps.compare.outputs.needs_update }}\` |"
+            echo ""
+            if [[ "${{ steps.compare.outputs.needs_update }}" == "true" ]]; then
+              echo "A newer CachyOS source exists. Rebase patches and validate locally before tagging a linux-ghost release."
+            else
+              echo "linux-ghost is already tracking the latest CachyOS stable source tag."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
 
-  auto-update:
-    name: Auto Update & Release
-    needs: check-upstream
-    if: needs.check-upstream.outputs.needs_update == 'true'
-    runs-on: self-hosted
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          fetch-depth: 0
-
-      - name: Update PKGBUILD version
+      - name: Fail when upstream update is available
+        if: steps.compare.outputs.needs_update == 'true'
         run: |
-          NEW_VERSION="${{ needs.check-upstream.outputs.update_to }}"
-          NEW_MINOR="${{ needs.check-upstream.outputs.new_minor }}"
-          NEW_MAJOR=$(echo "$NEW_VERSION" | cut -d. -f1,2)
-
-          echo "Updating to kernel ${NEW_VERSION}"
-
-          # Update _minor in PKGBUILD
-          sed -i "s/^_minor=.*/_minor=${NEW_MINOR}/" PKGBUILD
-
-          # Update _major if changed
-          CURRENT_MAJOR=$(grep "^_major=" PKGBUILD | cut -d= -f2)
-          if [[ "$CURRENT_MAJOR" != "$NEW_MAJOR" ]]; then
-            sed -i "s/^_major=.*/_major=${NEW_MAJOR}/" PKGBUILD
-          fi
-
-          echo "Updated PKGBUILD:"
-          grep -E "^_major=|^_minor=" PKGBUILD
-
-      - name: Commit changes
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
-          git add PKGBUILD
-          git commit -m "chore: bump kernel to ${{ needs.check-upstream.outputs.update_to }}"
-          git push
-
-      - name: Create tag and trigger release
-        run: |
-          TAG="v${{ needs.check-upstream.outputs.update_to }}-1"
-          echo "Creating tag: ${TAG}"
-
-          git tag -a "${TAG}" -m "Release ${TAG}"
-          git push origin "${TAG}"
-
-          echo "Created tag ${TAG} - release workflow will build packages"
+          echo "::error::New CachyOS source tag available: ${{ steps.upstream.outputs.source_tag }}. Rebase and test before release."
+          exit 1

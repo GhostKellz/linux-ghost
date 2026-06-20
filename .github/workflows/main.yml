@@ -5,9 +5,15 @@ on:
     branches: [main, master]
     paths:
       - 'PKGBUILD'
-      - '*.patch'
       - 'config/**'
-      - 'kernel.fragment'
+      - 'docs/**'
+      - 'linux-ghost.install'
+      - 'nvidia/**'
+      - 'patches/**'
+      - 'CHANGELOG.md'
+      - 'README.md'
+      - 'SECURITY.md'
+      - '.gitattributes'
       - '.github/workflows/**'
   pull_request:
     branches: [main, master]
@@ -17,7 +23,7 @@ jobs:
   build:
     name: Build Kernel
     runs-on: self-hosted
-    timeout-minutes: 45
+    timeout-minutes: 120
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -54,15 +60,26 @@ jobs:
 
           echo ""
           echo "=== GHOST Scheduler Config ==="
-          grep -E "CONFIG_SCHED_GHOST|CONFIG_GHOST_" .config 2>/dev/null || echo "GHOST config not found"
+          if ! grep -q '^CONFIG_SCHED_GHOST=y' .config; then
+            echo "ERROR: CONFIG_SCHED_GHOST=y missing from generated .config" >&2
+            grep -E 'CONFIG_SCHED_GHOST|CONFIG_GHOST_' .config >&2 || true
+            exit 1
+          fi
+          grep -E 'CONFIG_SCHED_GHOST|CONFIG_GHOST_' .config
 
-      - name: Compile kernel (vmlinux + modules_prepare)
+      - name: Compile kernel (full make all, LTO parity with release)
         run: |
+          # Reuse the exact toolchain the PKGBUILD selects (LLVM full LTO by
+          # default). Plain make would invoke GCC against a Clang/LTO .config and
+          # fail, so source the PKGBUILD to pick up BUILD_FLAGS.
+          # `make all` LTO-links vmlinux AND every in-tree module — the same
+          # objects the release `makepkg -sf` builds — so green here means the
+          # tag/release build will link.
+          source ./PKGBUILD
           cd src/cachyos-*/
-          echo "=== Starting compile test ==="
-          make olddefconfig
-          make -j$(nproc) vmlinux
-          make -j$(nproc) modules_prepare
+          echo "=== Starting full compile (flags: ${BUILD_FLAGS[*]:-none}) ==="
+          make "${BUILD_FLAGS[@]}" olddefconfig
+          make "${BUILD_FLAGS[@]}" -j$(nproc) all
           echo "=== Compile test PASSED ==="
 
       - name: Upload config

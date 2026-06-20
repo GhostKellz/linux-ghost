@@ -2,6 +2,26 @@
 
 All notable changes to linux-ghost are documented here.
 
+## [7.1.0-1] - 2026-06-16
+
+### Changed
+- **Kernel 7.1.0** — base source switched to CachyOS pre-patched tarball (`cachyos-7.1.0-1` stable)
+- GHOST Scheduler v2 rebased for the 7.1 EEVDF refactor: `update_entity_lag()` now
+  returns `bool`, and `requeue_delayed_entity()` was restructured upstream — the GHOST
+  bypass is now a `static_branch_likely(&sched_ghost_key)` guard around the inlined
+  lag-update block
+- `glitched-eevdf-additions` rebased from the stale TKG `vlinux-6.6.1` diff onto the
+  CachyOS 7.1 `CONFIG_CACHY` regions; `CONFIG_ZENIFY` tunables now layer as a
+  top-precedence override (migration_cost 250us, cfs_bandwidth_slice 3ms,
+  NR_MIGRATE_BREAK 8, energy_aware 0, dirty ratios 20/50). `base_slice` is left to
+  `CONFIG_CACHY` (already 400us == the original ZENIFY value)
+- `glitched-eevdf-additions` now vendored locally and applied from `patches/`
+  instead of the broken TKG curl-fetch (upstream TKG never rebased the 6.6.1 diff)
+
+### Fixed
+- TCP congestion control switched to BBR3 to match CachyOS 7.1 (`-d TCP_CONG_BBR`
+  drops the builtin BBR v1 to avoid the duplicate-symbol collision)
+
 ## [7.0.5-1] - 2026-05-11
 
 ### Added

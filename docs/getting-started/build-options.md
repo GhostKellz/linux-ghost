@@ -13,17 +13,7 @@ _compiler=gcc _lto_mode=thin _cpusched=eevdf makepkg -sf
 
 ## Kernel Version
 
-### `_kernel_type`
-
-| Value | Description |
-|-------|-------------|
-| `stable` | Stable release (6.19.x) - **default** |
-| `rc` | Release candidate (7.0-rcX) |
-
-```bash
-# Build RC kernel
-_kernel_type=rc makepkg -sf
-```
+linux-ghost currently tracks stable Linux 7.1.x packages from CachyOS release tarballs. Kernel version selection is handled by `_major`, `_minor`, and `_cachyos_tagrel` in `PKGBUILD`; there is no public `_kernel_type` build toggle.
 
 ---
 
@@ -47,14 +37,14 @@ _compiler=gcc makepkg -sf
 |-------|------|-----|-------------|
 | `full` | Full LTO | GCC LTO | Best performance, slow build - **default** |
 | `thin` | ThinLTO | N/A | Faster build, good performance |
-| `thin-dist` | Distributed ThinLTO | N/A | Fastest multi-core build (6.19+) |
+| `thin-dist` | Distributed ThinLTO | N/A | Fastest multi-core build on supported kernels |
 | `none` | Disabled | Disabled | Fastest build, no LTO |
 
 ```bash
 # Faster build with ThinLTO
 _lto_mode=thin makepkg -sf
 
-# Distributed ThinLTO (6.19+ feature, faster compile)
+# Distributed ThinLTO, faster compile on supported kernels
 _lto_mode=thin-dist makepkg -sf
 ```
 
@@ -66,8 +56,9 @@ _lto_mode=thin-dist makepkg -sf
 
 | Value | Description |
 |-------|-------------|
-| `ghost` | GHOST Scheduler (enhanced BORE, Zen5/X3D optimized) - **default** |
+| `ghost` | GHOST Scheduler on EEVDF, Zen4/Zen5/X3D optimized - **default** |
 | `eevdf` | Vanilla EEVDF |
+| `bore` | CachyOS BORE scheduler patch |
 
 GHOST scheduler provides:
 - Gaming workload detection (Wine/Proton/Steam priority)
@@ -77,8 +68,11 @@ GHOST scheduler provides:
 - Network stack priority for online gaming
 
 ```bash
-# Vanilla EEVDF (no gaming optimizations)
+# Vanilla EEVDF
 _cpusched=eevdf makepkg -sf
+
+# CachyOS BORE
+_cpusched=bore makepkg -sf
 ```
 
 ---
@@ -207,15 +201,8 @@ Gaming/low-latency optimizations from Zen/Liquorix.
 
 | Value | Description |
 |-------|-------------|
-| `yes` | Enable ACS override for VFIO - **default** |
-| `no` | Disable |
-
-### `_clear_patches`
-
-| Value | Description |
-|-------|-------------|
-| `no` | Disable Clear Linux patches - **default** |
-| `yes` | Enable (Intel optimizations) |
+| `no` | Disable ACS override for VFIO - **default** |
+| `yes` | Enable ACS override for VFIO |
 
 ---
 

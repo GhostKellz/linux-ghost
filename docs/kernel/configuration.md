@@ -60,13 +60,13 @@ The `CONFIG_AMD_3D_VCACHE=y` option enables runtime switching between cache-opti
 
 ```bash
 # Check current mode
-cat /sys/bus/platform/drivers/amd_x3d_vcache/mode
+cat /sys/bus/platform/drivers/amd_x3d_vcache/AMDI0101:00/amd_x3d_mode
 
 # Gaming (prefer V-Cache CCD)
-echo cache | sudo tee /sys/bus/platform/drivers/amd_x3d_vcache/mode
+echo cache | sudo tee /sys/bus/platform/drivers/amd_x3d_vcache/AMDI0101:00/amd_x3d_mode
 
 # Productivity (prefer frequency CCD)
-echo frequency | sudo tee /sys/bus/platform/drivers/amd_x3d_vcache/mode
+echo frequency | sudo tee /sys/bus/platform/drivers/amd_x3d_vcache/AMDI0101:00/amd_x3d_mode
 ```
 
 **Supported CPUs:** 9950X3D, 9900X3D, 7950X3D, 7900X3D, 7800X3D
@@ -135,10 +135,10 @@ echo frequency | sudo tee /sys/bus/platform/drivers/amd_x3d_vcache/mode
 
 | Option | Value | Purpose |
 |--------|-------|---------|
-| `CONFIG_PREEMPT_LAZY` | y | Lazy preemption (new in 6.13) |
+| `CONFIG_PREEMPT` | y | Full preemption (low latency) |
 | `CONFIG_PREEMPT_DYNAMIC` | y | Runtime preemption switching |
 
-**PREEMPT_LAZY:** Full preemption for RT/latency-sensitive tasks, lazy for normal tasks. Best balance of responsiveness and throughput.
+**PREEMPT (full):** The shipped default (`_preempt=full`) enables full kernel preemption for the lowest scheduling latency and disables `PREEMPT_LAZY`. `PREEMPT_DYNAMIC` allows switching the preemption mode at boot via the `preempt=` kernel parameter.
 
 ---
 
